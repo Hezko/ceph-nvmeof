@@ -11,7 +11,12 @@ import argparse
 import grpc
 import json
 from .config import GatewayConfig
-from .state import GatewayState, LocalGatewayState, OmapGatewayState, GatewayStateHandler
+from .state import (
+    GatewayState,
+    LocalGatewayState,
+    OmapGatewayState,
+    GatewayStateHandler,
+)
 from .utils import GatewayLogger
 from .proto import gateway_pb2 as pb2
 
@@ -27,8 +32,19 @@ import struct
 import selectors
 import os
 from dataclasses import dataclass, field
-from ctypes import Structure, LittleEndianStructure, c_bool, c_ubyte, c_uint8, c_uint16, c_uint32, c_uint64, c_float
+from ctypes import (
+    Structure,
+    LittleEndianStructure,
+    c_bool,
+    c_ubyte,
+    c_uint8,
+    c_uint16,
+    c_uint32,
+    c_uint64,
+    c_float,
+)
 from google.protobuf import json_format
+
 
 # NVMe tcp pdu type
 class NVME_TCP_PDU(enum.IntFlag):
@@ -42,6 +58,7 @@ class NVME_TCP_PDU(enum.IntFlag):
     C2H_DATA = 0x7
     TCP_R2T = 0x9
 
+
 # NVMe tcp opcode
 class NVME_TCP_OPC(enum.IntFlag):
     DELETE_SQ = 0x0
@@ -52,14 +69,15 @@ class NVME_TCP_OPC(enum.IntFlag):
     IDENTIFY = 0x6
     ABORT = 0x8
     SET_FEATURES = 0x9
-    GET_FEATURES = 0xa
-    ASYNC_EVE_REQ = 0xc
-    NS_MGMT = 0xd
+    GET_FEATURES = 0xA
+    ASYNC_EVE_REQ = 0xC
+    NS_MGMT = 0xD
     FW_COMMIT = 0x10
     FW_IMG_DOWNLOAD = 0x11
     NS_ATTACH = 0x15
     KEEP_ALIVE = 0x18
     FABRIC_TYPE = 0x7F
+
 
 # NVMe tcp fabric command type
 class NVME_TCP_FCTYPE(enum.IntFlag):
@@ -70,12 +88,13 @@ class NVME_TCP_FCTYPE(enum.IntFlag):
     AUTH_RECV = 0x6
     DISCONNECT = 0x8
 
+
 # NVMe controller register space offsets
 class NVME_CTL(enum.IntFlag):
     CAPABILITIES = 0x0
     VERSION = 0x08
     CONFIGURATION = 0x14
-    STATUS = 0x1c
+    STATUS = 0x1C
 
 
 # NVM subsystem types
@@ -85,12 +104,14 @@ class NVMF_SUBTYPE(enum.IntFlag):
     # NVMe type for NVM subsystem
     NVME = 0x2
 
+
 # NVMe over Fabrics transport types
 class TRANSPORT_TYPES(enum.IntFlag):
     RDMA = 0x1
     FC = 0x2
     TCP = 0x3
-    INTRA_HOST = 0xfe
+    INTRA_HOST = 0xFE
+
 
 # Address family types
 class ADRFAM_TYPES(enum.IntFlag):
@@ -98,7 +119,8 @@ class ADRFAM_TYPES(enum.IntFlag):
     ipv6 = 0x2
     ib = 0x3
     fc = 0x4
-    intra_host = 0xfe
+    intra_host = 0xFE
+
 
 # Transport requirement, secure channel requirements
 # Connections shall be made over a fabric secure channel
@@ -106,6 +128,7 @@ class NVMF_TREQ_SECURE_CHANNEL(enum.IntFlag):
     NOT_SPECIFIED = 0x0
     REQUIRED = 0x1
     NOT_REQUIRED = 0x2
+
 
 # maximum number of connections
 MAX_CONNECTION = 10240
@@ -116,6 +139,7 @@ NVME_TCP_PDU_UNIT = 1024
 # Max SQ head pointer
 SQ_HEAD_MAX = 128
 
+
 @dataclass
 class Connection:
     """Data used multiple times in each connection."""
@@ -124,15 +148,15 @@ class Connection:
     allow_listeners: list = field(default_factory=list)
     log_page: bytearray = field(default_factory=bytearray)
     recv_buffer: bytearray = field(default_factory=bytearray)
-    nvmeof_connect_data_hostid: tuple = tuple((c_ubyte *16)())
+    nvmeof_connect_data_hostid: tuple = tuple((c_ubyte * 16)())
     nvmeof_connect_data_cntlid: int = 0
-    nvmeof_connect_data_subnqn: tuple = tuple((c_ubyte *256)())
-    nvmeof_connect_data_hostnqn: tuple = tuple((c_ubyte *256)())
+    nvmeof_connect_data_subnqn: tuple = tuple((c_ubyte * 256)())
+    nvmeof_connect_data_hostnqn: tuple = tuple((c_ubyte * 256)())
     sq_head_ptr: int = 0
     unsent_log_page_len: int = 0
     # NVM ExpressTM Revision 1.4, page 47
     # see Figure 78: Offset 14h: CC – Controller Configuration
-    property_configuration: tuple = tuple((c_ubyte *8)())
+    property_configuration: tuple = tuple((c_ubyte * 8)())
     shutdown_now: bool = False
     controller_id: uuid = None
     gen_cnt: int = 0
@@ -140,6 +164,7 @@ class Connection:
     async_cmd_id: int = 0
     keep_alive_time: float = 0.0
     keep_alive_timeout: int = 0
+
 
 class AutoSerializableStructure(LittleEndianStructure):
     def __add__(self, other):
@@ -150,6 +175,7 @@ class AutoSerializableStructure(LittleEndianStructure):
         else:
             raise ValueError("error message format.")
 
+
 class Pdu(AutoSerializableStructure):
     _fields_ = [
         ("type", c_uint8),
@@ -158,6 +184,7 @@ class Pdu(AutoSerializableStructure):
         ("data_offset", c_uint8),
         ("packet_length", c_uint32),
     ]
+
 
 class ICResp(AutoSerializableStructure):
     _fields_ = [
@@ -168,8 +195,9 @@ class ICResp(AutoSerializableStructure):
         # digest types enabled
         ("digest_types", c_uint8),
         # Maximum data capsules per r2t supported
-        ("maximum_data_capsules", c_uint32)
+        ("maximum_data_capsules", c_uint32),
     ]
+
 
 class CqeConnect(AutoSerializableStructure):
     _fields_ = [
@@ -179,8 +207,9 @@ class CqeConnect(AutoSerializableStructure):
         ("sq_head_ptr", c_uint16),
         ("sq_id", c_uint16),
         ("cmd_id", c_uint16),
-        ("status", c_uint16)
+        ("status", c_uint16),
     ]
+
 
 class CqePropertyGetSet(AutoSerializableStructure):
     _fields_ = [
@@ -189,8 +218,9 @@ class CqePropertyGetSet(AutoSerializableStructure):
         ("sq_head_ptr", c_uint16),
         ("sq_id", c_uint16),
         ("cmd_id", c_uint16),
-        ("status", c_uint16)
+        ("status", c_uint16),
     ]
+
 
 class NVMeTcpDataPdu(AutoSerializableStructure):
     _fields_ = [
@@ -198,8 +228,9 @@ class NVMeTcpDataPdu(AutoSerializableStructure):
         ("transfer_tag", c_uint16),
         ("data_offset", c_uint32),
         ("data_length", c_uint32),
-        ("reserved", c_uint32)
+        ("reserved", c_uint32),
     ]
+
 
 class NVMeIdentify(AutoSerializableStructure):
     _fields_ = [
@@ -248,19 +279,21 @@ class NVMeIdentify(AutoSerializableStructure):
         ("reserved3", c_ubyte * 768),
         ("nvmeof_attributes", c_ubyte * 256),
         ("power_state_attributes", c_ubyte * 1024),
-        ("vendor_specific", c_ubyte * 1024)
+        ("vendor_specific", c_ubyte * 1024),
     ]
 
+
 # for set feature, keep alive and async
-class  CqeNVMe(AutoSerializableStructure):
+class CqeNVMe(AutoSerializableStructure):
     _fields_ = [
         ("dword0", c_uint32),
         ("dword1", c_uint32),
         ("sq_head_ptr", c_uint16),
         ("sq_id", c_uint16),
         ("cmd_id", c_uint16),
-        ("status", c_uint16)
+        ("status", c_uint16),
     ]
+
 
 class NVMeGetLogPage(AutoSerializableStructure):
     _fields_ = [
@@ -268,10 +301,11 @@ class NVMeGetLogPage(AutoSerializableStructure):
         ("genctr", c_uint64),
         # number of records
         ("numrec", c_uint64),
-        #record format
+        # record format
         ("recfmt", c_uint16),
-        ("reserved", c_ubyte * 1006)
+        ("reserved", c_ubyte * 1006),
     ]
+
 
 class DiscoveryLogEntry(AutoSerializableStructure):
     _fields_ = [
@@ -289,8 +323,9 @@ class DiscoveryLogEntry(AutoSerializableStructure):
         ("subnqn", c_ubyte * 256),
         ("traddr", c_ubyte * 256),
         # Transport specific address subtype
-        ("tsas", c_ubyte * 256)
+        ("tsas", c_ubyte * 256),
     ]
+
 
 class DiscoveryService:
     """Implements discovery controller.
@@ -310,22 +345,29 @@ class DiscoveryService:
         self.version = 1
         self.config = config
         self.lock = threading.Lock()
-        self.omap_state = OmapGatewayState(self.config, f"discovery-{socket.gethostname()}")
+        self.omap_state = OmapGatewayState(
+            self.config, f"discovery-{socket.gethostname()}"
+        )
 
         self.gw_logger_object = GatewayLogger(config)
         self.logger = self.gw_logger_object.logger
 
         gateway_group = self.config.get_with_default("gateway", "group", "")
-        self.omap_name = f"nvmeof.{gateway_group}.state" \
-            if gateway_group else "nvmeof.state"
+        self.omap_name = (
+            f"nvmeof.{gateway_group}.state" if gateway_group else "nvmeof.state"
+        )
         self.logger.info(f"log pages info from omap: {self.omap_name}")
 
-        self.discovery_addr = self.config.get_with_default("discovery", "addr", "0.0.0.0")
+        self.discovery_addr = self.config.get_with_default(
+            "discovery", "addr", "0.0.0.0"
+        )
         self.discovery_port = self.config.get_with_default("discovery", "port", "8009")
         if not self.discovery_addr or not self.discovery_port:
             self.logger.error("discovery addr/port are empty.")
             assert 0
-        self.logger.info(f"discovery addr: {self.discovery_addr} port: {self.discovery_port}")
+        self.logger.info(
+            f"discovery addr: {self.discovery_addr} port: {self.discovery_port}"
+        )
 
         self.sock = None
         self.conn_vals = {}
@@ -379,8 +421,11 @@ class DiscoveryService:
     def _get_vals(self, omap_dict, prefix):
         """Read values from the OMAP dict."""
 
-        return [json.loads(val.decode('utf-8')) for (key, val) in omap_dict.items()
-            if key.startswith(prefix)]
+        return [
+            json.loads(val.decode("utf-8"))
+            for (key, val) in omap_dict.items()
+            if key.startswith(prefix)
+        ]
 
     def reply_initialize(self, conn):
         """Reply initialize request."""
@@ -407,35 +452,31 @@ class DiscoveryService:
 
         self.logger.debug("handle connect request.")
         self_conn = self.conn_vals[conn.fileno()]
-        hf_nvmeof_cmd_connect_rsvd1 = struct.unpack_from('<19B', data, 13)
-        SIGL1 = struct.unpack_from('<QI4B', data, 32)
+        hf_nvmeof_cmd_connect_rsvd1 = struct.unpack_from("<19B", data, 13)
+        SIGL1 = struct.unpack_from("<QI4B", data, 32)
         address = SIGL1[0]
         length = SIGL1[1]
         reserved3 = SIGL1[2]
         descriptor_type = SIGL1[5]
 
-        CMD2 = struct.unpack_from('<HHHBBI', data, 48)
+        CMD2 = struct.unpack_from("<HHHBBI", data, 48)
         record_format = CMD2[0]
         queue_id = CMD2[1]
         submission_queue_size = CMD2[2]
         connect_attributes = CMD2[3]
         keep_alive_timeout = CMD2[5]
 
-        self_conn =self.conn_vals[conn.fileno()]
+        self_conn = self.conn_vals[conn.fileno()]
         self_conn.keep_alive_time = time.time()
         if keep_alive_timeout == 0:
             keep_alive_timeout = 15000
         self.logger.debug(f"connection keep alive {keep_alive_timeout}ms.")
         self_conn.keep_alive_timeout = keep_alive_timeout
 
-        self_conn.nvmeof_connect_data_hostid = \
-            struct.unpack_from('<16B', data, 72)
-        self_conn.nvmeof_connect_data_cntlid = \
-            struct.unpack_from('<H', data, 88)[0]
-        self_conn.nvmeof_connect_data_subnqn = \
-            struct.unpack_from('<256B', data, 328)
-        self_conn.nvmeof_connect_data_hostnqn = \
-            struct.unpack_from('<256B', data, 584)
+        self_conn.nvmeof_connect_data_hostid = struct.unpack_from("<16B", data, 72)
+        self_conn.nvmeof_connect_data_cntlid = struct.unpack_from("<H", data, 88)[0]
+        self_conn.nvmeof_connect_data_subnqn = struct.unpack_from("<256B", data, 328)
+        self_conn.nvmeof_connect_data_hostnqn = struct.unpack_from("<256B", data, 584)
 
         pdu_reply = Pdu()
         pdu_reply.type = NVME_TCP_PDU.RSP
@@ -460,11 +501,11 @@ class DiscoveryService:
 
         self.logger.debug("handle property get request.")
         self_conn = self.conn_vals[conn.fileno()]
-        nvmeof_prop_get_set_rsvd0 = struct.unpack_from('<35B', data, 13)
+        nvmeof_prop_get_set_rsvd0 = struct.unpack_from("<35B", data, 13)
         # property size = (attrib+1)x4, 0x1 means 8 bytes
-        nvmeof_prop_get_set_attrib = struct.unpack_from('<1B', data, 48)[0]
-        nvmeof_prop_get_set_rsvd1 = struct.unpack_from('<3B', data, 49)
-        nvmeof_prop_get_set_offset = struct.unpack_from('<I', data, 52)[0]
+        nvmeof_prop_get_set_attrib = struct.unpack_from("<1B", data, 48)[0]
+        nvmeof_prop_get_set_rsvd1 = struct.unpack_from("<3B", data, 49)
+        nvmeof_prop_get_set_offset = struct.unpack_from("<I", data, 52)[0]
 
         pdu_reply = Pdu()
         pdu_reply.type = NVME_TCP_PDU.RSP
@@ -479,8 +520,9 @@ class DiscoveryService:
             # \x01 contiguous queues required: true
             # \x1e timeout(to ready status): 1e(15000ms default in server side)
             # \x20 command sets supportd: 1 (NVM IO command set)?
-            property_get.property_data = (c_ubyte * 8)(0x7f, 0x00, \
-                0x01, 0x1e, 0x20, 0x00, 0x00, 0x00)
+            property_get.property_data = (c_ubyte * 8)(
+                0x7F, 0x00, 0x01, 0x1E, 0x20, 0x00, 0x00, 0x00
+            )
         elif NVME_CTL(nvmeof_prop_get_set_offset) == NVME_CTL.CONFIGURATION:
             # b'\x00\x00\x46\x00\x00\x00\x00\x00'
             # 0x46: IO Submission Queue Entry Size: 0x6 (64 bytes)
@@ -493,20 +535,24 @@ class DiscoveryService:
                 enabled = self_conn.property_configuration[0] & 0x1
                 if enabled != 0:
                     # controller status: ready
-                    property_get.property_data = (c_ubyte * 8)(0x01, 0x00, \
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+                    property_get.property_data = (c_ubyte * 8)(
+                        0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                    )
                 else:
-                    property_get.property_data = (c_ubyte * 8)(0x00, 0x00, \
-                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+                    property_get.property_data = (c_ubyte * 8)(
+                        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                    )
             else:
                 # here shutdown_notification should be 0x1
-                property_get.property_data = (c_ubyte * 8)(0x09, 0x00, \
-                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00)
+                property_get.property_data = (c_ubyte * 8)(
+                    0x09, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+                )
                 self_conn.shutdown_now = True
         elif NVME_CTL(nvmeof_prop_get_set_offset) == NVME_CTL.VERSION:
             # nvme version: 1.3
-            property_get.property_data = (c_ubyte * 8)(0x00, 0x03, \
-                0x01, 0x00, 0x00, 0x00, 0x00, 0x00)
+            property_get.property_data = (c_ubyte * 8)(
+                0x00, 0x03, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00
+            )
         else:
             self.logger.error("unsupported type for property getting.")
         property_get.sq_head_ptr = self_conn.sq_head_ptr
@@ -525,15 +571,15 @@ class DiscoveryService:
 
         self.logger.debug("handle property set request.")
         self_conn = self.conn_vals[conn.fileno()]
-        nvmeof_prop_get_set_rsvd0 = struct.unpack_from('<35B', data, 13)
-        nvmeof_prop_get_set_attrib = struct.unpack_from('<1B', data, 48)[0]
-        nvmeof_prop_get_set_rsvd1 = struct.unpack_from('<3B', data, 49)
-        nvmeof_prop_get_set_offset = struct.unpack_from('<I', data, 52)[0]
+        nvmeof_prop_get_set_rsvd0 = struct.unpack_from("<35B", data, 13)
+        nvmeof_prop_get_set_attrib = struct.unpack_from("<1B", data, 48)[0]
+        nvmeof_prop_get_set_rsvd1 = struct.unpack_from("<3B", data, 49)
+        nvmeof_prop_get_set_offset = struct.unpack_from("<I", data, 52)[0]
 
         if NVME_CTL(nvmeof_prop_get_set_offset) == NVME_CTL.CAPABILITIES:
             self.logger.error("property setting of capabilities is not supported.")
         elif NVME_CTL(nvmeof_prop_get_set_offset) == NVME_CTL.CONFIGURATION:
-            self_conn.property_configuration = struct.unpack_from('<8B', data, 56)
+            self_conn.property_configuration = struct.unpack_from("<8B", data, 56)
         elif NVME_CTL(nvmeof_prop_get_set_offset) == NVME_CTL.STATUS:
             self.logger.error("property setting of status is not supported.")
         elif NVME_CTL(nvmeof_prop_get_set_offset) == NVME_CTL.VERSION:
@@ -563,23 +609,23 @@ class DiscoveryService:
 
         self.logger.debug("handle identify request.")
         self_conn = self.conn_vals[conn.fileno()]
-        nvme_nsid = struct.unpack_from('<I', data, 12)[0]
-        nvme_rsvd1 = struct.unpack_from('<Q', data, 16)[0]
-        nvme_mptr = struct.unpack_from('<Q', data, 24)[0]
-        nvme_sgl = struct.unpack_from('<16B', data, 32)
+        nvme_nsid = struct.unpack_from("<I", data, 12)[0]
+        nvme_rsvd1 = struct.unpack_from("<Q", data, 16)[0]
+        nvme_mptr = struct.unpack_from("<Q", data, 24)[0]
+        nvme_sgl = struct.unpack_from("<16B", data, 32)
         nvme_sgl_desc_type = nvme_sgl[15] & 0xF0
         nvme_sgl_desc_sub_type = nvme_sgl[15] & 0x0F
-        nvme_identify_dword10 = struct.unpack_from('<I', data, 48)[0]
-        nvme_identify_dword11 = struct.unpack_from('<I', data, 52)[0]
-        nvme_identify_dword12 = struct.unpack_from('<I', data, 56)[0]
-        nvme_identify_dword13 = struct.unpack_from('<I', data, 60)[0]
-        nvme_identify_dword14 = struct.unpack_from('<I', data, 64)[0]
-        nvme_identify_dword15 = struct.unpack_from('<I', data, 68)[0]
+        nvme_identify_dword10 = struct.unpack_from("<I", data, 48)[0]
+        nvme_identify_dword11 = struct.unpack_from("<I", data, 52)[0]
+        nvme_identify_dword12 = struct.unpack_from("<I", data, 56)[0]
+        nvme_identify_dword13 = struct.unpack_from("<I", data, 60)[0]
+        nvme_identify_dword14 = struct.unpack_from("<I", data, 64)[0]
+        nvme_identify_dword15 = struct.unpack_from("<I", data, 68)[0]
 
         pdu_reply = Pdu()
         pdu_reply.type = NVME_TCP_PDU.C2H_DATA
         # 0x0c == 0b1100, means pdu data last: set, pdu data success: set
-        pdu_reply.specical_flag = 0x0c
+        pdu_reply.specical_flag = 0x0C
         pdu_reply.header_length = 24
         pdu_reply.data_offset = 24
         pdu_reply.packet_length = 4120
@@ -590,8 +636,9 @@ class DiscoveryService:
 
         identify_reply = NVMeIdentify()
         # version: 0.01
-        identify_reply.firmware_revision = (c_ubyte * 8)(0x30, 0x30, \
-            0x2e, 0x30, 0x31, 0x20, 0x20, 0x20)
+        identify_reply.firmware_revision = (c_ubyte * 8)(
+            0x30, 0x30, 0x2E, 0x30, 0x31, 0x20, 0x20, 0x20
+        )
         # maximum data transfer size: 2^5=32 pages
         identify_reply.mdts = 0x05
         identify_reply.controller_id = int(self_conn.controller_id)
@@ -603,7 +650,7 @@ class DiscoveryService:
         # log page attributes: Extended data get log page support: True
         identify_reply.lpa = 0x04
         # error log page entries:128 entries(127+1)
-        identify_reply.elpe = 0x7f
+        identify_reply.elpe = 0x7F
         identify_reply.max_cmd = 128
         identify_reply.fused_operation = 0x0001
         identify_reply.sgls = (c_uint8 * 4)(0x05, 0x00, 0x10, 0x00)
@@ -627,27 +674,27 @@ class DiscoveryService:
 
         self.logger.debug("handle set feature request.")
         self_conn = self.conn_vals[conn.fileno()]
-        nvme_nsid = struct.unpack_from('<I', data, 12)[0]
-        nvme_rsvd1 = struct.unpack_from('<Q', data, 16)[0]
-        nvme_mptr = struct.unpack_from('<Q', data, 24)[0]
-        nvme_sgl = struct.unpack_from('<16B', data, 32)
+        nvme_nsid = struct.unpack_from("<I", data, 12)[0]
+        nvme_rsvd1 = struct.unpack_from("<Q", data, 16)[0]
+        nvme_mptr = struct.unpack_from("<Q", data, 24)[0]
+        nvme_sgl = struct.unpack_from("<16B", data, 32)
         nvme_sgl_desc_type = nvme_sgl[15] & 0xF0
         nvme_sgl_desc_sub_type = nvme_sgl[15] & 0x0F
         # dword10 may include Feature Identifier:
         # Asynchronous Event Configuration (0x0b) (Not currently used)
-        nvme_set_features_dword10 = struct.unpack_from('<I', data, 48)[0]
-        nvme_set_features_dword11 = struct.unpack_from('<I', data, 52)[0]
-        nvme_set_features_dword12 = struct.unpack_from('<I', data, 56)[0]
-        nvme_set_features_dword13 = struct.unpack_from('<I', data, 60)[0]
-        nvme_set_features_dword14 = struct.unpack_from('<I', data, 64)[0]
-        nvme_set_features_dword15 = struct.unpack_from('<I', data, 68)[0]
+        nvme_set_features_dword10 = struct.unpack_from("<I", data, 48)[0]
+        nvme_set_features_dword11 = struct.unpack_from("<I", data, 52)[0]
+        nvme_set_features_dword12 = struct.unpack_from("<I", data, 56)[0]
+        nvme_set_features_dword13 = struct.unpack_from("<I", data, 60)[0]
+        nvme_set_features_dword14 = struct.unpack_from("<I", data, 64)[0]
+        nvme_set_features_dword15 = struct.unpack_from("<I", data, 68)[0]
 
         pdu_reply = Pdu()
         pdu_reply.type = NVME_TCP_PDU.RSP
         pdu_reply.header_length = 24
         pdu_reply.packet_length = 24
 
-        set_feature_reply =  CqeNVMe()
+        set_feature_reply = CqeNVMe()
         set_feature_reply.sq_head_ptr = self_conn.sq_head_ptr
         set_feature_reply.cmd_id = cmd_id
 
@@ -664,25 +711,25 @@ class DiscoveryService:
 
         self.logger.debug("handle get feature request.")
         self_conn = self.conn_vals[conn.fileno()]
-        nvme_nsid = struct.unpack_from('<I', data, 12)[0]
-        nvme_rsvd1 = struct.unpack_from('<Q', data, 16)[0]
-        nvme_mptr = struct.unpack_from('<Q', data, 24)[0]
-        nvme_sgl = struct.unpack_from('<16B', data, 32)
+        nvme_nsid = struct.unpack_from("<I", data, 12)[0]
+        nvme_rsvd1 = struct.unpack_from("<Q", data, 16)[0]
+        nvme_mptr = struct.unpack_from("<Q", data, 24)[0]
+        nvme_sgl = struct.unpack_from("<16B", data, 32)
         nvme_sgl_desc_type = nvme_sgl[15] & 0xF0
         nvme_sgl_desc_sub_type = nvme_sgl[15] & 0x0F
-        nvme_get_features_dword10 = struct.unpack_from('<I', data, 48)[0]
-        nvme_get_features_dword11 = struct.unpack_from('<I', data, 52)[0]
-        nvme_get_features_dword12 = struct.unpack_from('<I', data, 56)[0]
-        nvme_get_features_dword13 = struct.unpack_from('<I', data, 60)[0]
-        nvme_get_features_dword14 = struct.unpack_from('<I', data, 64)[0]
-        nvme_get_features_dword15 = struct.unpack_from('<I', data, 68)[0]
+        nvme_get_features_dword10 = struct.unpack_from("<I", data, 48)[0]
+        nvme_get_features_dword11 = struct.unpack_from("<I", data, 52)[0]
+        nvme_get_features_dword12 = struct.unpack_from("<I", data, 56)[0]
+        nvme_get_features_dword13 = struct.unpack_from("<I", data, 60)[0]
+        nvme_get_features_dword14 = struct.unpack_from("<I", data, 64)[0]
+        nvme_get_features_dword15 = struct.unpack_from("<I", data, 68)[0]
 
         pdu_reply = Pdu()
         pdu_reply.type = NVME_TCP_PDU.RSP
         pdu_reply.header_length = 24
         pdu_reply.packet_length = 24
 
-        get_feature_reply =  CqeNVMe()
+        get_feature_reply = CqeNVMe()
         get_feature_reply.dword0 = self_conn.keep_alive_timeout
         get_feature_reply.sq_head_ptr = self_conn.sq_head_ptr
         get_feature_reply.cmd_id = cmd_id
@@ -706,30 +753,36 @@ class DiscoveryService:
         if len(self_conn.nvmeof_connect_data_hostnqn) != 256:
             self.logger.error("error hostnqn.")
             return -1
-        hostnqn = "".join(chr(byte) for byte \
-            in self_conn.nvmeof_connect_data_hostnqn[:256]).rstrip('\x00')
+        hostnqn = "".join(
+            chr(byte) for byte in self_conn.nvmeof_connect_data_hostnqn[:256]
+        ).rstrip("\x00")
 
-        nvme_nsid = struct.unpack_from('<I', data, 12)[0]
-        nvme_rsvd1 = struct.unpack_from('<Q', data, 16)[0]
-        nvme_mptr = struct.unpack_from('<Q', data, 24)[0]
+        nvme_nsid = struct.unpack_from("<I", data, 12)[0]
+        nvme_rsvd1 = struct.unpack_from("<Q", data, 16)[0]
+        nvme_mptr = struct.unpack_from("<Q", data, 24)[0]
         # https://nvmexpress.org/wp-content/uploads/NVM-Express-1_4-2019.06.10-Ratified.pdf
         # The SGL Data Block descriptor, defined in Figure 114, describes a data block.
-        nvme_sgl = struct.unpack_from('<16B', data, 32)
+        nvme_sgl = struct.unpack_from("<16B", data, 32)
         nvme_sgl_desc_type = nvme_sgl[15] & 0xF0
         nvme_sgl_desc_sub_type = nvme_sgl[15] & 0x0F
-        nvme_sgl_len = nvme_sgl[8] + (nvme_sgl[9] << 8) + (nvme_sgl[10] << 16) + (nvme_sgl[11] << 24)
-        nvme_get_logpage_dword10 = struct.unpack_from('<I', data, 48)[0]
+        nvme_sgl_len = (
+            nvme_sgl[8]
+            + (nvme_sgl[9] << 8)
+            + (nvme_sgl[10] << 16)
+            + (nvme_sgl[11] << 24)
+        )
+        nvme_get_logpage_dword10 = struct.unpack_from("<I", data, 48)[0]
         # nvme_get_logpage_numd indicate the reply bytes, rule: (values+1)*4
-        nvme_get_logpage_numdl = struct.unpack_from('<H', data, 50)[0]
-        nvme_get_logpage_numdh = struct.unpack_from('<H', data, 52)[0]
+        nvme_get_logpage_numdl = struct.unpack_from("<H", data, 50)[0]
+        nvme_get_logpage_numdh = struct.unpack_from("<H", data, 52)[0]
         nvme_get_logpage_numd = (nvme_get_logpage_numdh << 16) + nvme_get_logpage_numdl
         nvme_data_len = (nvme_get_logpage_numd + 1) * 4
-        nvme_get_logpage_dword11 = struct.unpack_from('<I', data, 52)[0]
+        nvme_get_logpage_dword11 = struct.unpack_from("<I", data, 52)[0]
         # Logpage offset overlaps with dword13
-        nvme_logpage_offset = struct.unpack_from('<Q', data, 56)[0]
-        nvme_get_logpage_dword13 = struct.unpack_from('<I', data, 60)[0]
-        nvme_get_logpage_dword14 = struct.unpack_from('<I', data, 64)[0]
-        nvme_get_logpage_dword15 = struct.unpack_from('<I', data, 68)[0]
+        nvme_logpage_offset = struct.unpack_from("<Q", data, 56)[0]
+        nvme_get_logpage_dword13 = struct.unpack_from("<I", data, 60)[0]
+        nvme_get_logpage_dword14 = struct.unpack_from("<I", data, 64)[0]
+        nvme_get_logpage_dword15 = struct.unpack_from("<I", data, 68)[0]
         get_logpage_lid = nvme_get_logpage_dword10 & 0xFF
         get_logpage_lsp = (nvme_get_logpage_dword10 >> 8) & 0x1F
         get_logpage_lsi = nvme_get_logpage_dword11 >> 16
@@ -740,7 +793,9 @@ class DiscoveryService:
             return -1
 
         if nvme_data_len != nvme_sgl_len:
-            self.logger.error(f"request data len error, {nvme_data_len=} != {nvme_sgl_len=}.")
+            self.logger.error(
+                f"request data len error, {nvme_data_len=} != {nvme_sgl_len=}."
+            )
             return -1
 
         # Filter listeners based on host access permissions
@@ -748,12 +803,14 @@ class DiscoveryService:
         if len(allow_listeners) == 0:
             for host in hosts:
                 a = host["host_nqn"]
-                if host["host_nqn"] == '*' or host["host_nqn"] == hostnqn:
+                if host["host_nqn"] == "*" or host["host_nqn"] == hostnqn:
                     for listener in listeners:
                         # TODO: It is better to change nqn in the "listener"
                         # to subsystem_nqn to avoid confusion
                         if host["subsystem_nqn"] == listener["nqn"]:
-                            allow_listeners += [listener,]
+                            allow_listeners += [
+                                listener,
+                            ]
             self_conn.allow_listeners = allow_listeners
 
         # Prepare all log page data segments
@@ -780,36 +837,51 @@ class DiscoveryService:
                 log_entry.subtype = NVMF_SUBTYPE.NVME
                 log_entry.treq = NVMF_TREQ_SECURE_CHANNEL.NOT_REQUIRED
                 log_entry.port_id = log_entry_counter
-                log_entry.controller_id = 0xffff
+                log_entry.controller_id = 0xFFFF
                 log_entry.asqsz = 128
                 # transport service indentifier
                 str_trsvcid = str(allow_listeners[log_entry_counter]["trsvcid"])
-                log_entry.trsvcid = (c_ubyte * 32)(*[c_ubyte(x) for x \
-                    in str_trsvcid.encode()])
-                log_entry.trsvcid[len(str_trsvcid):] = \
-                    [c_ubyte(0x20)] * (32 - len(str_trsvcid))
+                log_entry.trsvcid = (c_ubyte * 32)(
+                    *[c_ubyte(x) for x in str_trsvcid.encode()]
+                )
+                log_entry.trsvcid[len(str_trsvcid) :] = [c_ubyte(0x20)] * (
+                    32 - len(str_trsvcid)
+                )
                 # NVM subsystem qualified name
-                log_entry.subnqn = (c_ubyte * 256)(*[c_ubyte(x) for x \
-                    in allow_listeners[log_entry_counter]["nqn"].encode()])
-                log_entry.subnqn[len(allow_listeners[log_entry_counter]["nqn"]):] = \
-                    [c_ubyte(0x00)] * (256 - len(allow_listeners[log_entry_counter]["nqn"]))
+                log_entry.subnqn = (c_ubyte * 256)(
+                    *[
+                        c_ubyte(x)
+                        for x in allow_listeners[log_entry_counter]["nqn"].encode()
+                    ]
+                )
+                log_entry.subnqn[len(allow_listeners[log_entry_counter]["nqn"]) :] = [
+                    c_ubyte(0x00)
+                ] * (256 - len(allow_listeners[log_entry_counter]["nqn"]))
                 # Transport address
-                log_entry.traddr = (c_ubyte * 256)(*[c_ubyte(x) for x \
-                    in allow_listeners[log_entry_counter]["traddr"].encode()])
-                log_entry.traddr[len(allow_listeners[log_entry_counter]["traddr"]):] = \
-                    [c_ubyte(0x20)] * (256 - len(allow_listeners[log_entry_counter]["traddr"]))
+                log_entry.traddr = (c_ubyte * 256)(
+                    *[
+                        c_ubyte(x)
+                        for x in allow_listeners[log_entry_counter]["traddr"].encode()
+                    ]
+                )
+                log_entry.traddr[
+                    len(allow_listeners[log_entry_counter]["traddr"]) :
+                ] = [c_ubyte(0x20)] * (
+                    256 - len(allow_listeners[log_entry_counter]["traddr"])
+                )
 
-                self_conn.log_page[1024*(log_entry_counter+1): \
-                    1024*(log_entry_counter+2)] = log_entry
+                self_conn.log_page[
+                    1024 * (log_entry_counter + 1) : 1024 * (log_entry_counter + 2)
+                ] = log_entry
                 log_entry_counter += 1
         else:
             self.logger.debug("in the process of sending log pages...")
 
-        reply = b''
+        reply = b""
         pdu_and_nvme_pdu_len = 8 + 16
         pdu_reply = Pdu()
         pdu_reply.type = NVME_TCP_PDU.C2H_DATA
-        pdu_reply.specical_flag = 0x0c
+        pdu_reply.specical_flag = 0x0C
         pdu_reply.header_length = pdu_and_nvme_pdu_len
         pdu_reply.data_offset = pdu_and_nvme_pdu_len
         pdu_reply.packet_length = pdu_and_nvme_pdu_len + nvme_data_len
@@ -824,17 +896,28 @@ class DiscoveryService:
             nvme_get_log_page_reply.genctr = self_conn.gen_cnt
             nvme_get_log_page_reply.numrec = len(allow_listeners)
 
-            reply = pdu_reply + nvme_tcp_data_pdu + bytes(nvme_get_log_page_reply)[:nvme_data_len]
+            reply = (
+                pdu_reply
+                + nvme_tcp_data_pdu
+                + bytes(nvme_get_log_page_reply)[:nvme_data_len]
+            )
         elif nvme_data_len % 1024 == 0:
             # reply log pages
-            reply = pdu_reply + nvme_tcp_data_pdu + \
-                self_conn.log_page[nvme_logpage_offset:nvme_logpage_offset+nvme_data_len]
+            reply = (
+                pdu_reply
+                + nvme_tcp_data_pdu
+                + self_conn.log_page[
+                    nvme_logpage_offset : nvme_logpage_offset + nvme_data_len
+                ]
+            )
             self_conn.unsent_log_page_len -= nvme_data_len
             if self_conn.unsent_log_page_len == 0:
-                self_conn.log_page = b''
+                self_conn.log_page = b""
                 self_conn.allow_listeners = []
         else:
-            self.logger.error(f"request log page: invalid length error {nvme_data_len=}")
+            self.logger.error(
+                f"request log page: invalid length error {nvme_data_len=}"
+            )
             return -1
         try:
             conn.sendall(reply)
@@ -849,22 +932,22 @@ class DiscoveryService:
 
         self.logger.debug("handle keep alive request.")
         self_conn = self.conn_vals[conn.fileno()]
-        nvme_sgl = struct.unpack_from('<16B', data, 32)
+        nvme_sgl = struct.unpack_from("<16B", data, 32)
         nvme_sgl_desc_type = nvme_sgl[15] & 0xF0
         nvme_sgl_desc_sub_type = nvme_sgl[15] & 0x0F
-        nvme_keep_alive_dword10 = struct.unpack_from('<I', data, 48)[0]
-        nvme_keep_alive_dword11 = struct.unpack_from('<I', data, 52)[0]
-        nvme_keep_alive_dword12 = struct.unpack_from('<I', data, 56)[0]
-        nvme_keep_alive_dword13 = struct.unpack_from('<I', data, 60)[0]
-        nvme_keep_alive_dword14 = struct.unpack_from('<I', data, 64)[0]
-        nvme_keep_alive_dword15 = struct.unpack_from('<I', data, 68)[0]
+        nvme_keep_alive_dword10 = struct.unpack_from("<I", data, 48)[0]
+        nvme_keep_alive_dword11 = struct.unpack_from("<I", data, 52)[0]
+        nvme_keep_alive_dword12 = struct.unpack_from("<I", data, 56)[0]
+        nvme_keep_alive_dword13 = struct.unpack_from("<I", data, 60)[0]
+        nvme_keep_alive_dword14 = struct.unpack_from("<I", data, 64)[0]
+        nvme_keep_alive_dword15 = struct.unpack_from("<I", data, 68)[0]
 
         pdu_reply = Pdu()
         pdu_reply.type = NVME_TCP_PDU.RSP
         pdu_reply.header_length = 24
         pdu_reply.packet_length = 24
 
-         # Cqe for keep alive
+        # Cqe for keep alive
         keep_alive_reply = CqeNVMe()
         keep_alive_reply.sq_head_ptr = self_conn.sq_head_ptr
         keep_alive_reply.cmd_id = cmd_id
@@ -888,11 +971,11 @@ class DiscoveryService:
         pdu_reply.header_length = 24
         pdu_reply.packet_length = 24
 
-         # Cqe for not supported opcode reply
+        # Cqe for not supported opcode reply
         not_supported_reply = CqeNVMe()
         not_supported_reply.sq_head_ptr = self_conn.sq_head_ptr
         not_supported_reply.cmd_id = cmd_id
-        not_supported_reply.status = 1 # Invalid Command Opcode: A reserved coded value or an unsupported value in the command opcode field.
+        not_supported_reply.status = 1  # Invalid Command Opcode: A reserved coded value or an unsupported value in the command opcode field.
 
         try:
             conn.sendall(pdu_reply + not_supported_reply)
@@ -902,21 +985,20 @@ class DiscoveryService:
         self.logger.warning("reply not supported opcode.")
         return 0
 
-
     def store_async(self, conn, data, cmd_id):
         """Parse and store async event."""
 
         self.logger.debug("parse and store async event.")
         self_conn = self.conn_vals[conn.fileno()]
-        nvme_sgl = struct.unpack_from('<16B', data, 32)
+        nvme_sgl = struct.unpack_from("<16B", data, 32)
         nvme_sgl_desc_type = nvme_sgl[15] & 0xF0
         nvme_sgl_desc_sub_type = nvme_sgl[15] & 0x0F
-        nvme_async_dword10 = struct.unpack_from('<I', data, 48)[0]
-        nvme_async_dword11 = struct.unpack_from('<I', data, 52)[0]
-        nvme_async_dword12 = struct.unpack_from('<I', data, 56)[0]
-        nvme_async_dword13 = struct.unpack_from('<I', data, 60)[0]
-        nvme_async_dword14 = struct.unpack_from('<I', data, 64)[0]
-        nvme_async_dword15 = struct.unpack_from('<I', data, 68)[0]
+        nvme_async_dword10 = struct.unpack_from("<I", data, 48)[0]
+        nvme_async_dword11 = struct.unpack_from("<I", data, 52)[0]
+        nvme_async_dword12 = struct.unpack_from("<I", data, 56)[0]
+        nvme_async_dword13 = struct.unpack_from("<I", data, 60)[0]
+        nvme_async_dword14 = struct.unpack_from("<I", data, 64)[0]
+        nvme_async_dword15 = struct.unpack_from("<I", data, 68)[0]
 
         self_conn.recv_async = True
         self_conn.async_cmd_id = cmd_id
@@ -926,7 +1008,9 @@ class DiscoveryService:
 
         should_send_async_event = False
         for key in update.keys():
-            if key.startswith(GatewayState.SUBSYSTEM_PREFIX) or key.startswith(GatewayState.LISTENER_PREFIX):
+            if key.startswith(GatewayState.SUBSYSTEM_PREFIX) or key.startswith(
+                GatewayState.LISTENER_PREFIX
+            ):
                 should_send_async_event = True
                 break
 
@@ -942,7 +1026,9 @@ class DiscoveryService:
 
                 async_reply = CqeNVMe()
                 # async_event_type:0x2 async_event_info:0xf0 log_page_identifier:0x70
-                async_reply.dword0 = int.from_bytes(b'\x02\xf0\x70\x00', byteorder='little')
+                async_reply.dword0 = int.from_bytes(
+                    b"\x02\xf0\x70\x00", byteorder="little"
+                )
                 async_reply.sq_head_ptr = self.conn_vals[key].sq_head_ptr
                 async_reply.cmd_id = self.conn_vals[key].async_cmd_id
 
@@ -960,13 +1046,17 @@ class DiscoveryService:
 
         while True:
             for key in list(self.conn_vals.keys()):
-                if self.conn_vals[key].keep_alive_timeout != 0 and \
-                  time.time() - self.conn_vals[key].keep_alive_time >= \
-                  self.conn_vals[key].keep_alive_timeout / 1000:
+                if (
+                    self.conn_vals[key].keep_alive_timeout != 0
+                    and time.time() - self.conn_vals[key].keep_alive_time
+                    >= self.conn_vals[key].keep_alive_timeout / 1000
+                ):
                     # Adding locks to prevent another thread from processing sudden requests.
                     # Is there a better way?
                     with self.lock:
-                        self.logger.debug(f"discover request from {self.conn_vals[key].connection} timeout.")
+                        self.logger.debug(
+                            f"discover request from {self.conn_vals[key].connection} timeout."
+                        )
                         self.selector.unregister(self.conn_vals[key].connection)
                         self.conn_vals[key].connection.close()
                         del self.conn_vals[key]
@@ -976,15 +1066,17 @@ class DiscoveryService:
     def reply_fabric_request(self, conn, data, cmd_id):
         """Reply fabric request."""
 
-        fabric_type = struct.unpack_from('<B', data, 12)[0]
+        fabric_type = struct.unpack_from("<B", data, 12)[0]
         handle_fabric = {
             NVME_TCP_FCTYPE.CONNECT: self.reply_fc_cmd_connect,
             NVME_TCP_FCTYPE.PROP_GET: self.reply_fc_cmd_prop_get,
-            NVME_TCP_FCTYPE.PROP_SET: self.reply_fc_cmd_prop_set
+            NVME_TCP_FCTYPE.PROP_SET: self.reply_fc_cmd_prop_set,
         }
+
         class UnknownFabricType(BaseException):
             def __init__(self, fabric_type):
                 super().__init__(f"unsupported opcode: {fabric_type}")
+
         try:
             err = handle_fabric[fabric_type](conn, data, cmd_id)
         except KeyError as e:
@@ -1013,7 +1105,7 @@ class DiscoveryService:
             while True:
                 if len(self_conn.recv_buffer) < 8:
                     return
-                pdu = struct.unpack_from('<BBBBI', self_conn.recv_buffer, 0)
+                pdu = struct.unpack_from("<BBBBI", self_conn.recv_buffer, 0)
                 pdu_type = pdu[0]
                 psh_flag = pdu[1]
                 ph_len = pdu[2]
@@ -1033,7 +1125,7 @@ class DiscoveryService:
                     err = self.reply_initialize(conn)
 
                 elif NVME_TCP_PDU(pdu_type) == NVME_TCP_PDU.CMD:
-                    CMD1 = struct.unpack_from('<BBH', data, 8)
+                    CMD1 = struct.unpack_from("<BBH", data, 8)
                     opcode = CMD1[0]
                     reserved = CMD1[1]
                     cmd_id = CMD1[2]
@@ -1045,7 +1137,7 @@ class DiscoveryService:
                         NVME_TCP_OPC.SET_FEATURES: self.reply_set_feature,
                         NVME_TCP_OPC.GET_FEATURES: self.reply_get_feature,
                         NVME_TCP_OPC.KEEP_ALIVE: self.reply_keep_alive,
-                        NVME_TCP_OPC.ASYNC_EVE_REQ: self.store_async
+                        NVME_TCP_OPC.ASYNC_EVE_REQ: self.store_async,
                     }
                     if opcode in handle_opcode:
                         err = handle_opcode[opcode](conn, data, cmd_id)
@@ -1073,12 +1165,11 @@ class DiscoveryService:
                 self.conn_vals[conn.fileno()] = Connection(
                     connection=conn,
                     controller_id=uuid.uuid4(),
-                    gen_cnt=self.connection_counter
+                    gen_cnt=self.connection_counter,
                 )
                 self.connection_counter += 1
 
-        self.selector.register(conn, selectors.EVENT_READ, \
-                               self.nvmeof_tcp_connection)
+        self.selector.register(conn, selectors.EVENT_READ, self.nvmeof_tcp_connection)
 
     def update_log_level(self):
         log_level = None
@@ -1088,18 +1179,24 @@ class DiscoveryService:
             with open(GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH, "r") as f:
                 log_level = f.read().strip()
         except Exception:
-            self.logger.exception(f"Error reading log level from \"{GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH}\"")
+            self.logger.exception(
+                f'Error reading log level from "{GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH}"'
+            )
         try:
             os.remove(GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH)
         except Exception:
-            self.logger.exception(f"Error removing \"{GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH}\"")
+            self.logger.exception(
+                f'Error removing "{GatewayLogger.NVME_GATEWAY_LOG_LEVEL_FILE_PATH}"'
+            )
 
         if log_level:
             try:
                 log_level = int(log_level)
             except ValueError:
                 pass
-            self.logger.info(f"Received request to set discovery service's log level to {log_level}")
+            self.logger.info(
+                f"Received request to set discovery service's log level to {log_level}"
+            )
             self.gw_logger_object.set_log_level(log_level)
 
     def start_service(self):
@@ -1107,15 +1204,21 @@ class DiscoveryService:
 
         family = socket.AF_INET
         try:
-            addr_info = socket.getaddrinfo(self.discovery_addr, None, 0, socket.SOCK_STREAM)
+            addr_info = socket.getaddrinfo(
+                self.discovery_addr, None, 0, socket.SOCK_STREAM
+            )
             if len(addr_info) == 1:
                 family = addr_info[0][0]
             else:
-                self.logger.warning(f"Can't get information for address {self.discovery_addr}")
+                self.logger.warning(
+                    f"Can't get information for address {self.discovery_addr}"
+                )
                 if ":" in self.discovery_addr:
                     family = socket.AF_INET6
         except Exception:
-            self.logger.exception(f"error trying to get the info for address {self.discovery_addr}")
+            self.logger.exception(
+                f"error trying to get the info for address {self.discovery_addr}"
+            )
             if ":" in self.discovery_addr:
                 family = socket.AF_INET6
 
@@ -1129,23 +1232,30 @@ class DiscoveryService:
         t.start()
 
         local_state = LocalGatewayState()
-        gateway_state = GatewayStateHandler(self.config, local_state,
-                                            self.omap_state, self._state_notify_update, f"discovery-{socket.gethostname()}")
+        gateway_state = GatewayStateHandler(
+            self.config,
+            local_state,
+            self.omap_state,
+            self._state_notify_update,
+            f"discovery-{socket.gethostname()}",
+        )
         gateway_state.start_update()
 
         try:
-          while True:
-            self.update_log_level()
-            events = self.selector.select()
-            for key, mask in events:
-                callback = key.data
-                callback(key.fileobj, mask)
+            while True:
+                self.update_log_level()
+                events = self.selector.select()
+                for key, mask in events:
+                    callback = key.data
+                    callback(key.fileobj, mask)
         except KeyboardInterrupt:
             self.logger.debug("received a ctrl+C interrupt. exiting...")
 
+
 def main(args=None):
-    parser = argparse.ArgumentParser(prog="python3 -m control",
-                                     description="Discover NVMe gateways")
+    parser = argparse.ArgumentParser(
+        prog="python3 -m control", description="Discover NVMe gateways"
+    )
     parser.add_argument(
         "-c",
         "--config",
@@ -1158,6 +1268,7 @@ def main(args=None):
     config = GatewayConfig(args.config)
     with DiscoveryService(config) as discovery_service:
         discovery_service.start_service()
+
 
 if __name__ == "__main__":
     main()

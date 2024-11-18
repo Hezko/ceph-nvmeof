@@ -21,7 +21,7 @@ from typing import Tuple, List
 
 
 class GatewayEnumUtils:
-    def get_value_from_key(e_type, keyval, ignore_case = False):
+    def get_value_from_key(e_type, keyval, ignore_case=False):
         val = None
         try:
             key_index = e_type.keys().index(keyval)
@@ -49,17 +49,18 @@ class GatewayEnumUtils:
             pass
         return keyval
 
+
 class GatewayUtils:
     DISCOVERY_NQN = "nqn.2014-08.org.nvmexpress.discovery"
 
     # We need to enclose IPv6 addresses in brackets before concatenating a colon and port number to it
-    def escape_address_if_ipv6(addr : str) -> str:
+    def escape_address_if_ipv6(addr: str) -> str:
         ret_addr = addr
         if ":" in addr and not addr.strip().startswith("["):
             ret_addr = f"[{addr}]"
         return ret_addr
 
-    def unescape_address_if_ipv6(addr : str, adrfam : str) -> str:
+    def unescape_address_if_ipv6(addr: str, adrfam: str) -> str:
         ret_addr = addr.strip()
         if adrfam.lower() == "ipv6":
             ret_addr = ret_addr.removeprefix("[").removesuffix("]")
@@ -83,9 +84,15 @@ class GatewayUtils:
                 return (errno.EINVAL, f"domain label {lbl} doesn't start with a letter")
 
             if lbl.endswith("-"):
-                return (errno.EINVAL, f"domain label {lbl} doesn't end with an alphanumeric character")
+                return (
+                    errno.EINVAL,
+                    f"domain label {lbl} doesn't end with an alphanumeric character",
+                )
             if not lbl.replace("-", "").isalnum():
-                return (errno.EINVAL, f"domain label {lbl} contains a character which is not [a-z,A-Z,0-9,'-','.']")
+                return (
+                    errno.EINVAL,
+                    f"domain label {lbl} contains a character which is not [a-z,A-Z,0-9,'-','.']",
+                )
 
         return (0, os.strerror(0))
 
@@ -131,56 +138,81 @@ class GatewayUtils:
         try:
             b = nqn.encode(encoding="utf-8")
         except UnicodeEncodeError:
-            return (errno.EINVAL, f"Invalid NQN \"{nqn}\", must have an UTF-8 encoding")
+            return (errno.EINVAL, f'Invalid NQN "{nqn}", must have an UTF-8 encoding')
 
         if len(nqn) < NQN_MIN_LENGTH:
-            return (errno.EINVAL, f"NQN \"{nqn}\" is too short, minimal length is {NQN_MIN_LENGTH}")
+            return (
+                errno.EINVAL,
+                f'NQN "{nqn}" is too short, minimal length is {NQN_MIN_LENGTH}',
+            )
 
         if len(nqn) > NQN_MAX_LENGTH:
-            return (errno.EINVAL, f"NQN \"{nqn}\" is too long, maximal length is {NQN_MAX_LENGTH}")
+            return (
+                errno.EINVAL,
+                f'NQN "{nqn}" is too long, maximal length is {NQN_MAX_LENGTH}',
+            )
         if GatewayUtils.is_discovery_nqn(nqn):
             # The NQN is technically valid but we will probably reject it later as being a discovery one
             return (0, os.strerror(0))
 
         if nqn.startswith(NQN_UUID_PREFIX):
             if len(nqn) != NQN_UUID_PREFIX_LENGTH + UUID_STRING_LENGTH:
-                return (errno.EINVAL, f"Invalid NQN \"{nqn}\": UUID is not the correct length")
-            uuid_part = nqn[NQN_UUID_PREFIX_LENGTH : ]
+                return (
+                    errno.EINVAL,
+                    f'Invalid NQN "{nqn}": UUID is not the correct length',
+                )
+            uuid_part = nqn[NQN_UUID_PREFIX_LENGTH:]
             if not GatewayUtils.is_valid_uuid(uuid_part):
-                return (errno.EINVAL, f"Invalid NQN \"{nqn}\": UUID is not formatted correctly")
+                return (
+                    errno.EINVAL,
+                    f'Invalid NQN "{nqn}": UUID is not formatted correctly',
+                )
             return (0, os.strerror(0))
 
         if not nqn.startswith(NQN_PREFIX):
-            return (errno.EINVAL, f"Invalid NQN \"{nqn}\", doesn't start with \"{NQN_PREFIX}\"")
+            return (
+                errno.EINVAL,
+                f'Invalid NQN "{nqn}", doesn\'t start with "{NQN_PREFIX}"',
+            )
 
-        nqn_no_prefix = nqn[len(NQN_PREFIX) : ]
-        date_part = nqn_no_prefix[ : 8]
-        rev_domain_part = nqn_no_prefix[8 : ]
+        nqn_no_prefix = nqn[len(NQN_PREFIX) :]
+        date_part = nqn_no_prefix[:8]
+        rev_domain_part = nqn_no_prefix[8:]
         if not date_part.endswith("."):
-            return (errno.EINVAL, f"Invalid NQN \"{nqn}\": invalid date code")
-        date_part = date_part[ : -1]
+            return (errno.EINVAL, f'Invalid NQN "{nqn}": invalid date code')
+        date_part = date_part[:-1]
         try:
             year_part, month_part = date_part.split("-")
             if len(year_part) != 4 or len(month_part) != 2:
-                return (errno.EINVAL, f"Invalid NQN \"{nqn}\": invalid date code")
+                return (errno.EINVAL, f'Invalid NQN "{nqn}": invalid date code')
             n = int(year_part)
             n = int(month_part)
         except ValueError:
-            return (errno.EINVAL, f"Invalid NQN \"{nqn}\": invalid date code")
+            return (errno.EINVAL, f'Invalid NQN "{nqn}": invalid date code')
 
         try:
             rev_domain_part, user_part = rev_domain_part.split(":", 1)
         except ValueError:
-            return (errno.EINVAL, f"Invalid NQN \"{nqn}\": must contain a user specified name starting with a \":\"")
+            return (
+                errno.EINVAL,
+                f'Invalid NQN "{nqn}": must contain a user specified name starting with a ":"',
+            )
 
         if not user_part:
-            return (errno.EINVAL, f"Invalid NQN \"{nqn}\": must contain a user specified name starting with a \":\"")
+            return (
+                errno.EINVAL,
+                f'Invalid NQN "{nqn}": must contain a user specified name starting with a ":"',
+            )
 
         rc = GatewayUtils.is_valid_rev_domain(rev_domain_part)
         if rc[0] != 0:
-            return (errno.EINVAL, f"Invalid NQN \"{nqn}\": reverse domain is not formatted correctly: {rc[1]}")
+            return (
+                errno.EINVAL,
+                f'Invalid NQN "{nqn}": reverse domain is not formatted correctly: {rc[1]}',
+            )
 
         return (0, os.strerror(0))
+
 
 class GatewayLogger:
     CEPH_LOG_DIRECTORY = "/var/log/ceph/"
@@ -196,7 +228,9 @@ class GatewayLogger:
 
     def __init__(self, config=None):
         if config:
-            self.log_directory = config.get_with_default("gateway-logs", "log_directory", GatewayLogger.CEPH_LOG_DIRECTORY)
+            self.log_directory = config.get_with_default(
+                "gateway-logs", "log_directory", GatewayLogger.CEPH_LOG_DIRECTORY
+            )
             gateway_name = config.get("gateway", "name")
         else:
             self.log_directory = GatewayLogger.CEPH_LOG_DIRECTORY
@@ -207,7 +241,9 @@ class GatewayLogger:
 
         if not gateway_name:
             gateway_name = socket.gethostname()
-        self.log_directory = self.log_directory + GatewayLogger.NVME_LOG_DIR_PREFIX + gateway_name
+        self.log_directory = (
+            self.log_directory + GatewayLogger.NVME_LOG_DIR_PREFIX + gateway_name
+        )
 
         if GatewayLogger.logger:
             assert self.logger == GatewayLogger.logger
@@ -220,13 +256,33 @@ class GatewayLogger:
         frmtr = logging.Formatter(fmt=format_string, datefmt=date_fmt_string)
 
         if config:
-            verbose = config.getboolean_with_default("gateway-logs", "verbose_log_messages", True)
-            log_files_enabled = config.getboolean_with_default("gateway-logs", "log_files_enabled", True)
-            log_files_rotation_enabled = config.getboolean_with_default("gateway-logs", "log_files_rotation_enabled", True)
-            max_log_file_size = config.getint_with_default("gateway-logs", "max_log_file_size_in_mb", GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT)
-            max_log_files_count = config.getint_with_default("gateway-logs", "max_log_files_count", GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT)
-            max_log_directory_backups = config.getint_with_default("gateway-logs", "max_log_directory_backups", GatewayLogger.MAX_LOG_DIRECTORY_BACKUPS_DEFAULT)
-            log_level = config.get_with_default("gateway-logs", "log_level", "INFO").upper()
+            verbose = config.getboolean_with_default(
+                "gateway-logs", "verbose_log_messages", True
+            )
+            log_files_enabled = config.getboolean_with_default(
+                "gateway-logs", "log_files_enabled", True
+            )
+            log_files_rotation_enabled = config.getboolean_with_default(
+                "gateway-logs", "log_files_rotation_enabled", True
+            )
+            max_log_file_size = config.getint_with_default(
+                "gateway-logs",
+                "max_log_file_size_in_mb",
+                GatewayLogger.MAX_LOG_FILE_SIZE_DEFAULT,
+            )
+            max_log_files_count = config.getint_with_default(
+                "gateway-logs",
+                "max_log_files_count",
+                GatewayLogger.MAX_LOG_FILES_COUNT_DEFAULT,
+            )
+            max_log_directory_backups = config.getint_with_default(
+                "gateway-logs",
+                "max_log_directory_backups",
+                GatewayLogger.MAX_LOG_DIRECTORY_BACKUPS_DEFAULT,
+            )
+            log_level = config.get_with_default(
+                "gateway-logs", "log_level", "INFO"
+            ).upper()
         else:
             verbose = True
             log_files_enabled = False
@@ -239,16 +295,20 @@ class GatewayLogger:
         self.handler = None
         logdir_ok = False
         if log_files_enabled:
-            GatewayLogger.rotate_backup_directories(self.log_directory, max_log_directory_backups)
+            GatewayLogger.rotate_backup_directories(
+                self.log_directory, max_log_directory_backups
+            )
             if not log_files_rotation_enabled:
                 max_log_file_size = 0
                 max_log_files_count = 0
             try:
                 os.makedirs(self.log_directory, 0o755, True)
                 logdir_ok = True
-                self.handler = logging.handlers.RotatingFileHandler(self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME,
-                                                 maxBytes = max_log_file_size * 1024 * 1024,
-                                                 backupCount = max_log_files_count)
+                self.handler = logging.handlers.RotatingFileHandler(
+                    self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME,
+                    maxBytes=max_log_file_size * 1024 * 1024,
+                    backupCount=max_log_files_count,
+                )
                 self.handler.setFormatter(frmtr)
                 if log_files_rotation_enabled:
                     self.handler.rotator = GatewayLogger.log_file_rotate
@@ -257,32 +317,42 @@ class GatewayLogger:
 
         if not verbose:
             format_string = None
-        logging.basicConfig(level=log_level, format=format_string, datefmt=date_fmt_string)
+        logging.basicConfig(
+            level=log_level, format=format_string, datefmt=date_fmt_string
+        )
         self.logger = logging.getLogger("nvmeof")
         if self.handler:
             self.logger.addHandler(self.handler)
         self.set_log_level(log_level)
-        self.logger.info(f"Initialize gateway log level to \"{log_level}\"")
+        self.logger.info(f'Initialize gateway log level to "{log_level}"')
         GatewayLogger.logger = self.logger
         GatewayLogger.handler = self.handler
         if not GatewayLogger.init_executed:
             if log_files_enabled:
                 if not logdir_ok:
-                    self.logger.error(f"Failed to create directory {self.log_directory}, the log wouldn't be saved to a file")
+                    self.logger.error(
+                        f"Failed to create directory {self.log_directory}, the log wouldn't be saved to a file"
+                    )
                 elif not self.handler:
-                    self.logger.error(f"Failed to set up log file handler, the log wouldn't be saved to a file")
+                    self.logger.error(
+                        f"Failed to set up log file handler, the log wouldn't be saved to a file"
+                    )
                 else:
                     rot_msg = ""
                     if log_files_rotation_enabled:
                         rot_msg = ", using rotation"
-                    self.logger.info(f"Log files will be saved in {self.log_directory}{rot_msg}")
+                    self.logger.info(
+                        f"Log files will be saved in {self.log_directory}{rot_msg}"
+                    )
             else:
-                self.logger.warning(f"Log files are disabled, the log wouldn't be saved to a file")
+                self.logger.warning(
+                    f"Log files are disabled, the log wouldn't be saved to a file"
+                )
             GatewayLogger.init_executed = True
 
     def rotate_backup_directories(dirname, count):
         try:
-            shutil.rmtree(dirname + f".bak{count}", ignore_errors = True)
+            shutil.rmtree(dirname + f".bak{count}", ignore_errors=True)
         except Exception:
             pass
         for i in range(count, 2, -1):
@@ -301,7 +371,7 @@ class GatewayLogger:
 
         # Just to be on the safe side, in case the rename failed
         try:
-            shutil.rmtree(dirname, ignore_errors = True)
+            shutil.rmtree(dirname, ignore_errors=True)
         except Exception:
             pass
 
@@ -326,7 +396,7 @@ class GatewayLogger:
                     GatewayLogger.logger.info(m)
                 for e in errs:
                     GatewayLogger.logger.error(e)
-                
+
         else:
             os.rename(src, dest)
 
@@ -343,8 +413,8 @@ class GatewayLogger:
             pass
         need_to_remove_dest = False
         try:
-            with open(src, 'rb') as f_in:
-                with gzip.open(dest, 'wb') as f_out:
+            with open(src, "rb") as f_in:
+                with gzip.open(dest, "wb") as f_out:
                     shutil.copyfileobj(f_in, f_out)
         except FileNotFoundError:
             errs.append(f"Failure compressing file {src}: file not found")
@@ -381,7 +451,9 @@ class GatewayLogger:
             return
 
         if not self.log_directory.endswith(gw_name):
-            self.logger.error(f"Log directory {self.log_directory} doesn't belong to gateway {gw_name}, do not compress log file")
+            self.logger.error(
+                f"Log directory {self.log_directory} doesn't belong to gateway {gw_name}, do not compress log file"
+            )
             return
 
         self.logger.removeHandler(self.handler)
@@ -389,12 +461,18 @@ class GatewayLogger:
         GatewayLogger.handler = None
 
         dest_name = self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME + ".gz"
-        if os.access(self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME + ".1",
-                     os.F_OK) and not os.access(self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME + ".0",
-                     os.F_OK):
-            dest_name = self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME + ".0"
+        if os.access(
+            self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME + ".1", os.F_OK
+        ) and not os.access(
+            self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME + ".0", os.F_OK
+        ):
+            dest_name = (
+                self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME + ".0"
+            )
 
-        msgs, errs = GatewayLogger.compress_file(self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME, dest_name)
+        msgs, errs = GatewayLogger.compress_file(
+            self.log_directory + "/" + GatewayLogger.NVME_LOG_FILE_NAME, dest_name
+        )
         for m in msgs:
             self.logger.info(m)
         for e in errs:
@@ -404,7 +482,7 @@ class GatewayLogger:
 
 
 class NICS:
-    ignored_device_prefixes = ('lo')
+    ignored_device_prefixes = "lo"
 
     def __init__(self):
         self.addresses = {}
@@ -412,7 +490,11 @@ class NICS:
         self._build_adapter_info()
 
     def _build_adapter_info(self):
-        for device_name in [nic for nic in netifaces.interfaces() if not nic.startswith(NICS.ignored_device_prefixes)]:
+        for device_name in [
+            nic
+            for nic in netifaces.interfaces()
+            if not nic.startswith(NICS.ignored_device_prefixes)
+        ]:
             nic = NIC(device_name)
             for ipv4_addr in nic.ipv4_addresses:
                 self.addresses[ipv4_addr] = device_name
@@ -424,12 +506,12 @@ class NICS:
 
 class NIC:
 
-    sysfs_root = '/sys/class/net'
+    sysfs_root = "/sys/class/net"
 
     def __init__(self, device_name: str) -> None:
         self.device_name = device_name
 
-        self.mac_list = ''
+        self.mac_list = ""
         self.ipv4_list = []
         self.ipv6_list = []
 
@@ -449,14 +531,16 @@ class NIC:
         except Exception:
             # log the error and the filename
             err = 1
-            content = ''
+            content = ""
 
         return err, content
 
     @property
     def operstate(self) -> str:
-        err, content = self._read_sysfs(f"{NIC.sysfs_root}/{self.device_name}/operstate")
-        return content if not err else ''
+        err, content = self._read_sysfs(
+            f"{NIC.sysfs_root}/{self.device_name}/operstate"
+        )
+        return content if not err else ""
 
     @property
     def mtu(self) -> int:
@@ -466,7 +550,7 @@ class NIC:
     @property
     def duplex(self) -> str:
         err, content = self._read_sysfs(f"{NIC.sysfs_root}/{self.device_name}/duplex")
-        return content if not err else ''
+        return content if not err else ""
 
     @property
     def speed(self) -> int:
@@ -476,18 +560,18 @@ class NIC:
     @property
     def mac_address(self) -> str:
         if self.mac_list:
-            return self.mac_list[0].get('addr')
+            return self.mac_list[0].get("addr")
         else:
-            return ''
+            return ""
 
     @property
     def ipv4_addresses(self) -> List[str]:
-        return [ipv4_info.get('addr') for ipv4_info in self.ipv4_list]
+        return [ipv4_info.get("addr") for ipv4_info in self.ipv4_list]
 
     @property
     def ipv6_addresses(self) -> List[str]:
         # Note. ipv6 addresses are suffixed by the adapter name
-        return [ipv6_info.get('addr').split('%')[0] for ipv6_info in self.ipv6_list]
+        return [ipv6_info.get("addr").split("%")[0] for ipv6_info in self.ipv6_list]
 
     def __str__(self):
         return (

@@ -7,14 +7,15 @@ from control.state import OmapGatewayState
 def pytest_addoption(parser):
     """Sets command line options for testing."""
     # Specify base config file for tests
-    parser.addoption("--config",
-                     action="store",
-                     help="Path to config file",
-                     default="ceph-nvmeof.conf")
-    parser.addoption("--image",
-                     action="store",
-                     help="RBD image name",
-                     default="mytestdevimage")
+    parser.addoption(
+        "--config",
+        action="store",
+        help="Path to config file",
+        default="ceph-nvmeof.conf",
+    )
+    parser.addoption(
+        "--image", action="store", help="RBD image name", default="mytestdevimage"
+    )
 
 
 @pytest.fixture(scope="session")
