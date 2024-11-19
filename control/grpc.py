@@ -291,7 +291,8 @@ class GatewayService(pb2_grpc.GatewayServicer):
     DHCHAP_CONTROLLER_PREFIX = "dhchap_ctrlr"
     KEYS_DIR = "/var/tmp"
     MAX_SUBSYSTEMS_DEFAULT = 128
-    MAX_NAMESPACES_DEFAULT = 256
+    MAX_NAMESPACES_DEFAULT = 1024
+    MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT = 256
     MAX_HOSTS_PER_SUBSYS_DEFAULT = 32
 
     def __init__(self, config: GatewayConfig, gateway_state: GatewayStateHandler, rpc_lock, omap_lock: OmapLock, group_id: int, spdk_rpc_client, spdk_rpc_subsystems_client, ceph_utils: CephUtils) -> None:
@@ -302,44 +303,6 @@ class GatewayService(pb2_grpc.GatewayServicer):
         config.display_environment_info(self.logger)
         self.ceph_utils = ceph_utils
         self.ceph_utils.fetch_and_display_ceph_version()
-        requested_hugepages_val = os.getenv("HUGEPAGES", "")
-        if not requested_hugepages_val:
-            self.logger.warning("Can't get requested huge pages count")
-        else:
-            requested_hugepages_val = requested_hugepages_val.strip()
-            try:
-                requested_hugepages_val = int(requested_hugepages_val)
-                self.logger.info(f"Requested huge pages count is {requested_hugepages_val}")
-            except ValueError:
-                self.logger.warning(f"Requested huge pages count value {requested_hugepages_val} is not numeric")
-                requested_hugepages_val = None
-        hugepages_file = os.getenv("HUGEPAGES_DIR", "")
-        if not hugepages_file:
-            hugepages_file = "/sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages"
-            self.logger.warning("No huge pages file defined, will use /sys/kernel/mm/hugepages/hugepages-2048kB/nr_hugepages")
-        else:
-            hugepages_file = hugepages_file.strip()
-        if os.access(hugepages_file, os.F_OK):
-            try:
-                hugepages_val = ""
-                with open(hugepages_file) as f:
-                    hugepages_val = f.readline()
-                hugepages_val = hugepages_val.strip()
-                if hugepages_val:
-                    try:
-                        hugepages_val = int(hugepages_val)
-                        self.logger.info(f"Actual huge pages count is {hugepages_val}")
-                    except ValueError:
-                        self.logger.warning(f"Actual huge pages count value {hugepages_val} is not numeric")
-                        hugepages_val = ""
-                    if requested_hugepages_val and hugepages_val != "" and requested_hugepages_val > hugepages_val:
-                        self.logger.warning(f"The actual huge page count {hugepages_val} is smaller than the requested value of {requested_hugepages_val}")
-                else:
-                    self.logger.warning(f"Can't read actual huge pages count value from {hugepages_file}")
-            except Exception as ex:
-                self.logger.exception(f"Can't read actual huge pages count value from {hugepages_file}")
-        else:
-            self.logger.warning(f"Can't find huge pages file {hugepages_file}")
         self.config = config
         config.dump_config_file(self.logger)
         self.rpc_lock = rpc_lock
@@ -365,6 +328,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
         self.max_namespaces_with_netmask = self.config.getint_with_default("gateway", "max_namespaces_with_netmask", 1000)
         self.max_subsystems = self.config.getint_with_default("gateway", "max_subsystems", GatewayService.MAX_SUBSYSTEMS_DEFAULT)
         self.max_namespaces = self.config.getint_with_default("gateway", "max_namespaces", GatewayService.MAX_NAMESPACES_DEFAULT)
+        self.max_namespaces_per_subsystem = self.config.getint_with_default("gateway", "max_namespaces_per_subsystem", GatewayService.MAX_NAMESPACES_PER_SUBSYSTEM_DEFAULT)
         self.max_hosts_per_subsystem = self.config.getint_with_default("gateway", "max_hosts_per_subsystem", GatewayService.MAX_HOSTS_PER_SUBSYS_DEFAULT)
         self.gateway_pool = self.config.get_with_default("ceph", "pool", "")
         self.ana_map = defaultdict(dict)
@@ -916,10 +880,12 @@ class GatewayService(pb2_grpc.GatewayServicer):
             return pb2.subsys_status(status = errno.EINVAL, error_message = errmsg, nqn = request.subsystem_nqn)
 
         if not request.max_namespaces:
-            request.max_namespaces = self.max_namespaces
+            request.max_namespaces = self.max_namespaces_per_subsystem
         else:
             if request.max_namespaces > self.max_namespaces:
                 self.logger.warning(f"The requested max number of namespaces for subsystem {request.subsystem_nqn} ({request.max_namespaces}) is greater than the global limit on the number of namespaces ({self.max_namespaces}), will continue")
+            elif request.max_namespaces > self.max_namespaces_per_subsystem:
+                self.logger.warning(f"The requested max number of namespaces for subsystem {request.subsystem_nqn} ({request.max_namespaces}) is greater than the limit on the number of namespaces per subsystem ({self.max_namespaces_per_subsystem}), will continue")
 
         errmsg = ""
         if not GatewayState.is_key_element_valid(request.subsystem_nqn):
@@ -1201,6 +1167,11 @@ class GatewayService(pb2_grpc.GatewayServicer):
         peer_msg = self.get_peer_message(context)
         self.logger.info(f"Received request to add {bdev_name} to {subsystem_nqn} with ANA group id {anagrpid}{nsid_msg}, no_auto_visible: {no_auto_visible}, context: {context}{peer_msg}")
 
+        if subsystem_nqn not in self.subsys_max_ns:
+            errmsg = f"{add_namespace_error_prefix}: No such subsystem"
+            self.logger.error(errmsg)
+            return pb2.nsid_status(status=errno.ENOENT, error_message=errmsg)
+
         if anagrpid > self.subsys_max_ns[subsystem_nqn]:
             errmsg = f"{add_namespace_error_prefix}: Group ID {anagrpid} is bigger than configured maximum {self.subsys_max_ns[subsystem_nqn]}"
             self.logger.error(errmsg)
@@ -1213,23 +1184,28 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         if no_auto_visible and self.subsystem_nsid_bdev_and_uuid.get_namespace_count(subsystem_nqn,
                                                                                True, 0) >= self.max_namespaces_with_netmask:
-            errmsg = f"Failure adding namespace{nsid_msg} to {subsystem_nqn}: Maximal number of namespaces which are not auto visible ({self.max_namespaces_with_netmask}) has already been reached"
+            errmsg = f"{add_namespace_error_prefix}: Maximal number of namespaces which are not auto visible ({self.max_namespaces_with_netmask}) has already been reached"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
 
         if nsid and nsid > self.subsys_max_ns[subsystem_nqn]:
-            errmsg = f"Failure adding namespace to {subsystem_nqn}: Requested NSID {nsid} is bigger than the maximal one ({self.subsys_max_ns[subsystem_nqn]})"
+            errmsg = f"{add_namespace_error_prefix}: Requested NSID {nsid} is bigger than the maximal one ({self.subsys_max_ns[subsystem_nqn]})"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
 
         if not nsid and self.subsystem_nsid_bdev_and_uuid.get_namespace_count(subsystem_nqn,
                                                                         None, 0) >= self.subsys_max_ns[subsystem_nqn]:
-            errmsg = f"Failure adding namespace to {subsystem_nqn}: Subsystem's maximal number of namespaces ({self.subsys_max_ns[subsystem_nqn]}) has already been reached"
+            errmsg = f"{add_namespace_error_prefix}: Subsystem's maximal number of namespaces ({self.subsys_max_ns[subsystem_nqn]}) has already been reached"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
 
         if self.subsystem_nsid_bdev_and_uuid.get_namespace_count(None, None, 0) >= self.max_namespaces:
-            errmsg = f"Failure adding namespace to {subsystem_nqn}: Maximal number of namespaces ({self.max_namespaces}) has already been reached"
+            errmsg = f"{add_namespace_error_prefix}: Maximal number of namespaces ({self.max_namespaces}) has already been reached"
+            self.logger.error(f"{errmsg}")
+            return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
+
+        if self.subsystem_nsid_bdev_and_uuid.get_namespace_count(subsystem_nqn, None, 0) >= self.subsys_max_ns[subsystem_nqn]:
+            errmsg = f"{add_namespace_error_prefix}: Maximal number of namespaces per subsystem ({self.subsys_max_ns[subsystem_nqn]}) has already been reached"
             self.logger.error(f"{errmsg}")
             return pb2.req_status(status=errno.E2BIG, error_message=errmsg)
 
@@ -2077,7 +2053,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
 
         find_ret = self.subsystem_nsid_bdev_and_uuid.find_namespace(request.subsystem_nqn, request.nsid)
         if find_ret.empty():
-            errmsg = f"Failure deleting namespace: Can't find namespace"
+            errmsg = f"Failure deleting namespace {request.nsid}: Can't find namespace"
             self.logger.error(errmsg)
             return pb2.req_status(status=errno.ENODEV, error_message=errmsg)
         bdev_name = find_ret.bdev
@@ -3734,6 +3710,7 @@ class GatewayService(pb2_grpc.GatewayServicer):
                                hostname = self.host_name,
                                max_subsystems = self.max_subsystems,
                                max_namespaces = self.max_namespaces,
+                               max_namespaces_per_subsystem = self.max_namespaces_per_subsystem,
                                max_hosts_per_subsystem = self.max_hosts_per_subsystem,
                                status = 0,
                                error_message = os.strerror(0))
