@@ -15,7 +15,6 @@ import glob
 config = "ceph-nvmeof.conf"
 subsystem_prefix = "nqn.2016-06.io.spdk:cnode"
 
-
 def clear_log_files():
     files = os.listdir("/var/log/ceph")
     for f in files:
@@ -23,11 +22,10 @@ def clear_log_files():
         statinfo = os.stat(fpath)
         if stat.S_ISDIR(statinfo.st_mode):
             print(f"Deleting directory {fpath}")
-            shutil.rmtree(fpath, ignore_errors=True)
+            shutil.rmtree(fpath, ignore_errors = True)
         else:
             print(f"Deleting file {fpath}")
             os.remove(fpath)
-
 
 @pytest.fixture(scope="function")
 def gateway(config, request):
@@ -66,7 +64,6 @@ def gateway(config, request):
         gateway.gateway_rpc.gateway_state.delete_state()
     clear_log_files()
 
-
 def test_log_files(gateway):
     gw = gateway
     look_for = f"/var/log/ceph/nvmeof-{gw.name}"
@@ -84,7 +81,6 @@ def test_log_files(gateway):
     assert len(spdk_files) == 1
     assert f"spdk-{gw.name}" in spdk_files[0]
 
-
 def test_log_files_disabled(gateway):
     gw = gateway
     cli(["subsystem", "add", "--subsystem", subsystem_prefix + "1"])
@@ -95,7 +91,6 @@ def test_log_files_disabled(gateway):
     assert subs_list.subsystems[0].nqn == subsystem_prefix + "1"
     files = glob.glob("/var/log/ceph/nvme*")
     assert files == []
-
 
 def test_log_files_rotation(gateway):
     gw = gateway
@@ -129,7 +124,6 @@ def test_log_files_rotation(gateway):
             check_for = bytes(f"Starting gateway {gw.name}", "utf-8")
             assert check_for in f.read()
 
-
 def test_log_files_disable_rotation(gateway):
     gw = gateway
     files = glob.glob("/var/log/ceph/nvme*")
@@ -151,7 +145,6 @@ def test_log_files_disable_rotation(gateway):
     with open(f"/var/log/ceph/nvmeof-{gw.name}/nvmeof-log", mode="r") as f:
         check_for = f"Starting gateway {gw.name}"
         assert check_for in f.read()
-
 
 def test_no_spdk_log(gateway):
     gw = gateway

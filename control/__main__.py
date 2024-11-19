@@ -12,12 +12,10 @@ from .server import GatewayServer
 from .config import GatewayConfig
 from .utils import GatewayLogger
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        prog="python3 -m control",
-        description="Manage NVMe gateways",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
-    )
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(prog="python3 -m control",
+                                     description="Manage NVMe gateways",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument(
         "-c",
         "--config",

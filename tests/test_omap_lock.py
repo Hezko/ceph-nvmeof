@@ -16,21 +16,9 @@ subsystem_prefix = "nqn.2016-06.io.spdk:cnode"
 host_nqn_prefix = "nqn.2014-08.org.nvmexpress:uuid:22207d09-d8af-4ed2-84ec-a6d80b"
 created_resource_count = 10
 
-
-def setup_config(
-    config,
-    gw1_name,
-    gw2_name,
-    gw_group,
-    update_notify,
-    update_interval_sec,
-    disable_unlock,
-    lock_duration,
-    sock1_name,
-    sock2_name,
-    port_inc,
-):
-    """Sets up the config objects for gateways A and B"""
+def setup_config(config, gw1_name, gw2_name, gw_group, update_notify ,update_interval_sec, disable_unlock, lock_duration,
+                 sock1_name, sock2_name, port_inc):
+    """Sets up the config objects for gateways A and B """
 
     configA = copy.deepcopy(config)
     configA.config["gateway"]["name"] = gw1_name
@@ -55,22 +43,13 @@ def setup_config(
 
     return configA, configB
 
-
 def start_servers(gatewayA, gatewayB, gw_group, addr, portA, portB, ceph_utils):
-    ceph_utils.execute_ceph_monitor_command(
-        "{"
-        + f'"prefix":"nvme-gw create", "id": "{gatewayA.name}", "pool": "{pool}", "group": "{gw_group}"'
-        + "}"
-    )
+    ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gatewayA.name}", "pool": "{pool}", "group": "{gw_group}"' + "}")
     gatewayA.serve()
     # Delete existing OMAP state
     gatewayA.gateway_rpc.gateway_state.delete_state()
     # Create new
-    ceph_utils.execute_ceph_monitor_command(
-        "{"
-        + f'"prefix":"nvme-gw create", "id": "{gatewayB.name}", "pool": "{pool}", "group": "{gw_group}"'
-        + "}"
-    )
+    ceph_utils.execute_ceph_monitor_command("{" + f'"prefix":"nvme-gw create", "id": "{gatewayB.name}", "pool": "{pool}", "group": "{gw_group}"' + "}")
     gatewayB.serve()
     gatewayB.gateway_rpc.gateway_state.delete_state()
 
@@ -82,7 +61,6 @@ def start_servers(gatewayA, gatewayB, gw_group, addr, portA, portB, ceph_utils):
 
     return stubA, stubB
 
-
 def stop_servers(gatewayA, gatewayB):
     # Stop gateways
     gatewayA.gateway_rpc.gateway_state.delete_state()
@@ -90,74 +68,45 @@ def stop_servers(gatewayA, gatewayB):
     gatewayA.server.stop(grace=1)
     gatewayB.server.stop(grace=1)
 
-
 @pytest.fixture(scope="function")
 def conn_omap_reread(config, request):
     """Sets up and tears down Gateways A and B."""
 
     # Setup GatewayA and GatewayB configs
-    configA, configB = setup_config(
-        config,
-        "GatewayA",
-        "GatewayB",
-        "Group1",
-        False,
-        300,
-        False,
-        60,
-        "spdk_GatewayA.sock",
-        "spdk_GatewayB.sock",
-        0,
-    )
+    configA, configB = setup_config(config, "GatewayA", "GatewayB", "Group1", False, 300, False, 60,
+                                    "spdk_GatewayA.sock", "spdk_GatewayB.sock", 0)
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
     portB = configB.getint("gateway", "port")
     ceph_utils = CephUtils(config)
     # Start servers
     with (
-        GatewayServer(configA) as gatewayA,
-        GatewayServer(configB) as gatewayB,
+       GatewayServer(configA) as gatewayA,
+       GatewayServer(configB) as gatewayB,
     ):
-        stubA, stubB = start_servers(
-            gatewayA, gatewayB, "Group1", addr, portA, portB, ceph_utils
-        )
+        stubA, stubB = start_servers(gatewayA, gatewayB, "Group1", addr, portA, portB, ceph_utils)
         yield stubA, stubB, gatewayA.gateway_rpc, gatewayB.gateway_rpc
         stop_servers(gatewayA, gatewayB)
-
 
 @pytest.fixture(scope="function")
 def conn_lock_twice(config, request):
     """Sets up and tears down Gateways A and B."""
 
     # Setup GatewayA and GatewayB configs
-    configA, configB = setup_config(
-        config,
-        "GatewayAA",
-        "GatewayBB",
-        "Group2",
-        True,
-        5,
-        True,
-        100,
-        "spdk_GatewayAA.sock",
-        "spdk_GatewayBB.sock",
-        2,
-    )
+    configA, configB = setup_config(config, "GatewayAA", "GatewayBB", "Group2", True, 5, True, 100,
+                                    "spdk_GatewayAA.sock", "spdk_GatewayBB.sock", 2)
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
     portB = configB.getint("gateway", "port")
     ceph_utils = CephUtils(config)
     # Start servers
     with (
-        GatewayServer(configA) as gatewayA,
-        GatewayServer(configB) as gatewayB,
+       GatewayServer(configA) as gatewayA,
+       GatewayServer(configB) as gatewayB,
     ):
-        stubA, stubB = start_servers(
-            gatewayA, gatewayB, "Group2", addr, portA, portB, ceph_utils
-        )
+        stubA, stubB = start_servers(gatewayA, gatewayB, "Group2", addr, portA, portB, ceph_utils)
         yield stubA, stubB
         stop_servers(gatewayA, gatewayB)
-
 
 @pytest.fixture(scope="function")
 def conn_concurrent(config, request):
@@ -169,63 +118,37 @@ def conn_concurrent(config, request):
     ceph_utils = CephUtils(config)
 
     # Setup GatewayA and GatewayB configs
-    configA, configB = setup_config(
-        config,
-        "GatewayAAA",
-        "GatewayBBB",
-        "Group3",
-        True,
-        5,
-        False,
-        60,
-        "spdk_GatewayAAA.sock",
-        "spdk_GatewayBBB.sock",
-        4,
-    )
+    configA, configB = setup_config(config, "GatewayAAA", "GatewayBBB", "Group3", True, 5, False, 60,
+                                    "spdk_GatewayAAA.sock", "spdk_GatewayBBB.sock", 4)
 
     addr = configA.get("gateway", "addr")
     portA = configA.getint("gateway", "port")
     portB = configB.getint("gateway", "port")
     # Start servers
     with (
-        GatewayServer(configA) as gatewayA,
-        GatewayServer(configB) as gatewayB,
+       GatewayServer(configA) as gatewayA,
+       GatewayServer(configB) as gatewayB,
     ):
-        stubA, stubB = start_servers(
-            gatewayA, gatewayB, "Group3", addr, portA, portB, ceph_utils
-        )
+        stubA, stubB = start_servers(gatewayA, gatewayB, "Group3", addr, portA, portB, ceph_utils)
         yield gatewayA.gateway_rpc, gatewayB.gateway_rpc, stubA, stubB
         stop_servers(gatewayA, gatewayB)
-
 
 def build_host_nqn(i):
     ihex = hex(i).split("x")[1]
     hostnqn = f"{host_nqn_prefix}{ihex:{0}>6}"
     return hostnqn
 
-
 def create_resource_by_index(stub, i, caplog):
     subsystem = f"{subsystem_prefix}{i}"
-    subsystem_req = pb2.create_subsystem_req(
-        subsystem_nqn=subsystem,
-        max_namespaces=256,
-        enable_ha=True,
-        no_group_append=True,
-    )
+    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256, enable_ha=True, no_group_append=True)
     ret_subsystem = stub.create_subsystem(subsystem_req)
     assert ret_subsystem.status == 0
     if caplog != None:
         assert f"create_subsystem {subsystem}: True" in caplog.text
         assert f"Failure creating subsystem {subsystem}" not in caplog.text
-    namespace_req = pb2.namespace_add_req(
-        subsystem_nqn=subsystem,
-        rbd_pool_name=pool,
-        rbd_image_name=image,
-        block_size=4096,
-        create_image=True,
-        size=16 * 1024 * 1024,
-        force=True,
-    )
+    namespace_req = pb2.namespace_add_req(subsystem_nqn=subsystem,
+                                          rbd_pool_name=pool, rbd_image_name=image, block_size=4096,
+                                          create_image=True, size=16*1024*1024, force=True)
     ret_namespace = stub.namespace_add(namespace_req)
     assert ret_namespace.status == 0
     hostnqn = build_host_nqn(i)
@@ -240,7 +163,6 @@ def create_resource_by_index(stub, i, caplog):
         assert "add_host *: True" in caplog.text
         assert f"Failure allowing open host access to {subsystem}" not in caplog.text
         assert f"Failure adding host {hostnqn} to {subsystem}" not in caplog.text
-
 
 def check_resource_by_index(i, subsys_list, hosts_info):
     subsystem = f"{subsystem_prefix}{i}"
@@ -260,9 +182,9 @@ def check_resource_by_index(i, subsys_list, hosts_info):
             pass
     assert found_host
 
-
 def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
-    """Tests reading out of date OMAP file"""
+    """Tests reading out of date OMAP file
+    """
     stubA, stubB, gatewayA, gatewayB = conn_omap_reread
     nqn = subsystem_prefix + "X1"
     serial = "Ceph00000000000001"
@@ -270,23 +192,10 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     num_subsystems = 2
 
     # Send requests to create a subsystem with one namespace to GatewayA
-    subsystem_req = pb2.create_subsystem_req(
-        subsystem_nqn=nqn,
-        serial_number=serial,
-        max_namespaces=256,
-        enable_ha=True,
-        no_group_append=True,
-    )
-    namespace_req = pb2.namespace_add_req(
-        subsystem_nqn=nqn,
-        nsid=nsid,
-        rbd_pool_name=pool,
-        rbd_image_name=image,
-        block_size=4096,
-        create_image=True,
-        size=16 * 1024 * 1024,
-        force=True,
-    )
+    subsystem_req = pb2.create_subsystem_req(subsystem_nqn=nqn, serial_number=serial, max_namespaces=256, enable_ha=True, no_group_append=True)
+    namespace_req = pb2.namespace_add_req(subsystem_nqn=nqn, nsid=nsid,
+                                          rbd_pool_name=pool, rbd_image_name=image, block_size=4096,
+                                          create_image=True, size=16*1024*1024, force=True)
 
     subsystem_list_req = pb2.list_subsystems_req()
     ret_subsystem = stubA.create_subsystem(subsystem_req)
@@ -295,62 +204,38 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     assert ret_namespace.status == 0
 
     # Until we create some resource on GW-B it shouldn't still have the resrouces created on GW-A, only the discovery subsystem
-    listB = json.loads(
-        json_format.MessageToJson(
-            stubB.list_subsystems(subsystem_list_req),
-            preserving_proto_field_name=True,
-            including_default_value_fields=True,
-        )
-    )["subsystems"]
+    listB = json.loads(json_format.MessageToJson(
+        stubB.list_subsystems(subsystem_list_req),
+        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     assert len(listB) == 1
 
-    listA = json.loads(
-        json_format.MessageToJson(
-            stubA.list_subsystems(subsystem_list_req),
-            preserving_proto_field_name=True,
-            including_default_value_fields=True,
-        )
-    )["subsystems"]
+    listA = json.loads(json_format.MessageToJson(
+        stubA.list_subsystems(subsystem_list_req),
+        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     assert len(listA) == num_subsystems
 
-    ns2_req = pb2.namespace_add_req(
-        subsystem_nqn=nqn,
-        rbd_pool_name=pool,
-        rbd_image_name=image,
-        block_size=4096,
-        create_image=True,
-        size=16 * 1024 * 1024,
-        force=True,
-    )
+    ns2_req = pb2.namespace_add_req(subsystem_nqn=nqn,
+                                   rbd_pool_name=pool,
+                                   rbd_image_name=image,
+                                   block_size=4096, create_image=True, size=16*1024*1024, force=True)
     ret_ns2 = stubB.namespace_add(ns2_req)
     assert ret_ns2.status == 0
     assert "The file is not current, will reload it and try again" in caplog.text
 
     # Make sure that after reading the OMAP file GW-B has the subsystem and namespace created on GW-A
-    listB = json.loads(
-        json_format.MessageToJson(
-            stubB.list_subsystems(subsystem_list_req),
-            preserving_proto_field_name=True,
-            including_default_value_fields=True,
-        )
-    )["subsystems"]
+    listB = json.loads(json_format.MessageToJson(
+        stubB.list_subsystems(subsystem_list_req),
+        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     assert len(listB) == num_subsystems
-    assert listB[num_subsystems - 1]["nqn"] == nqn
-    assert listB[num_subsystems - 1]["serial_number"] == serial
-    assert (
-        listB[num_subsystems - 1]["namespace_count"] == num_subsystems
-    )  # We created one namespace on each subsystem
+    assert listB[num_subsystems-1]["nqn"] == nqn
+    assert listB[num_subsystems-1]["serial_number"] == serial
+    assert listB[num_subsystems-1]["namespace_count"] == num_subsystems    # We created one namespace on each subsystem
 
     caplog.clear()
-    ns3_req = pb2.namespace_add_req(
-        subsystem_nqn=nqn,
-        rbd_pool_name=pool,
-        rbd_image_name=image,
-        block_size=4096,
-        create_image=True,
-        size=16 * 1024 * 1024,
-        force=True,
-    )
+    ns3_req = pb2.namespace_add_req(subsystem_nqn=nqn,
+                                   rbd_pool_name=pool,
+                                   rbd_image_name=image,
+                                   block_size=4096, create_image=True, size=16*1024*1024, force=True)
     ret_ns3 = stubB.namespace_add(ns3_req)
     assert ret_ns3.status == 0
     assert "The file is not current, will reload it and try again" not in caplog.text
@@ -363,9 +248,9 @@ def test_multi_gateway_omap_reread(config, conn_omap_reread, caplog):
     assert len(bdevsB) == 3
     assert bdevsA[0]["uuid"] == bdevsB[0]["uuid"]
 
-
 def test_trying_to_lock_twice(config, image, conn_lock_twice, caplog):
-    """Tests an attempt to lock the OMAP file from two gateways at the same time"""
+    """Tests an attempt to lock the OMAP file from two gateways at the same time
+    """
     caplog.clear()
     stubA, stubB = conn_lock_twice
 
@@ -376,9 +261,9 @@ def test_trying_to_lock_twice(config, image, conn_lock_twice, caplog):
     assert "The OMAP file is locked, will try again in" in caplog.text
     assert "Unable to lock OMAP file" in caplog.text
 
-
 def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog):
-    """Tests concurrent changes to the OMAP from two gateways"""
+    """Tests concurrent changes to the OMAP from two gateways
+    """
     caplog.clear()
     gwA, gwB, stubA, stubB = conn_concurrent
 
@@ -388,19 +273,14 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
         else:
             create_resource_by_index(stubB, i, caplog)
         assert "failed" not in caplog.text.lower()
-    listener_req = pb2.create_listener_req(
-        nqn=f"{subsystem_prefix}0",
-        host_name=gwA.host_name,
-        adrfam="ipv4",
-        traddr="127.0.0.1",
-        trsvcid=5001,
-    )
+    listener_req = pb2.create_listener_req(nqn=f"{subsystem_prefix}0",
+                                           host_name=gwA.host_name,
+                                           adrfam="ipv4",
+                                           traddr="127.0.0.1",
+                                           trsvcid=5001)
     listener_ret = stubA.create_listener(listener_req)
     assert listener_ret.status == 0
-    assert (
-        f"Received request to create {gwA.host_name} TCP ipv4 listener for {subsystem_prefix}0 at 127.0.0.1:5001"
-        in caplog.text
-    )
+    assert f"Received request to create {gwA.host_name} TCP ipv4 listener for {subsystem_prefix}0 at 127.0.0.1:5001" in caplog.text
     assert f"create_listener: True" in caplog.text
 
     timeout = 15  # Maximum time to wait (in seconds)
@@ -409,94 +289,61 @@ def test_multi_gateway_concurrent_changes(config, image, conn_concurrent, caplog
 
     while expected_warning_other_gw not in caplog.text:
         if time.time() - start_time > timeout:
-            pytest.fail(
-                f"Timeout: '{expected_warning_other_gw}' not found in caplog.text within {timeout} seconds."
-            )
+            pytest.fail(f"Timeout: '{expected_warning_other_gw}' not found in caplog.text within {timeout} seconds.")
         time.sleep(0.1)
 
     assert expected_warning_other_gw in caplog.text
     caplog.clear()
     subsystem_list_req = pb2.list_subsystems_req()
-    subListA = json.loads(
-        json_format.MessageToJson(
-            stubA.list_subsystems(subsystem_list_req),
-            preserving_proto_field_name=True,
-            including_default_value_fields=True,
-        )
-    )["subsystems"]
-    subListB = json.loads(
-        json_format.MessageToJson(
-            stubB.list_subsystems(subsystem_list_req),
-            preserving_proto_field_name=True,
-            including_default_value_fields=True,
-        )
-    )["subsystems"]
+    subListA = json.loads(json_format.MessageToJson(
+        stubA.list_subsystems(subsystem_list_req),
+        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
+    subListB = json.loads(json_format.MessageToJson(
+        stubB.list_subsystems(subsystem_list_req),
+        preserving_proto_field_name=True, including_default_value_fields=True))['subsystems']
     for i in range(created_resource_count):
         subsystem = f"{subsystem_prefix}{i}"
         host_list_req = pb2.list_hosts_req(subsystem=subsystem)
-        hostListA = json.loads(
-            json_format.MessageToJson(
-                stubA.list_hosts(host_list_req),
-                preserving_proto_field_name=True,
-                including_default_value_fields=True,
-            )
-        )
-        hostListB = json.loads(
-            json_format.MessageToJson(
-                stubB.list_hosts(host_list_req),
-                preserving_proto_field_name=True,
-                including_default_value_fields=True,
-            )
-        )
+        hostListA = json.loads(json_format.MessageToJson(
+            stubA.list_hosts(host_list_req),
+            preserving_proto_field_name=True, including_default_value_fields=True))
+        hostListB = json.loads(json_format.MessageToJson(
+            stubB.list_hosts(host_list_req),
+            preserving_proto_field_name=True, including_default_value_fields=True))
         check_resource_by_index(i, subListA, hostListA)
         check_resource_by_index(i, subListB, hostListB)
 
-
 def test_multi_gateway_listener_update(config, image, conn_concurrent, caplog):
-    """Tests listener update after subsystem deletion"""
+    """Tests listener update after subsystem deletion
+    """
     gwA, gwB, stubA, stubB = conn_concurrent
 
     caplog.clear()
     subsystem = f"{subsystem_prefix}QQQ"
-    subsystem_add_req = pb2.create_subsystem_req(
-        subsystem_nqn=subsystem,
-        max_namespaces=256,
-        enable_ha=True,
-        no_group_append=True,
-    )
+    subsystem_add_req = pb2.create_subsystem_req(subsystem_nqn=subsystem, max_namespaces=256, enable_ha=True, no_group_append=True)
     ret_subsystem = stubA.create_subsystem(subsystem_add_req)
     assert ret_subsystem.status == 0
     assert f"create_subsystem {subsystem}: True" in caplog.text
     assert f"Failure creating subsystem {subsystem}" not in caplog.text
     caplog.clear()
-    listenerA_req = pb2.create_listener_req(
-        nqn=subsystem,
-        host_name=gwA.host_name,
-        adrfam="ipv4",
-        traddr="127.0.0.1",
-        trsvcid=5101,
-    )
+    listenerA_req = pb2.create_listener_req(nqn=subsystem,
+                                           host_name=gwA.host_name,
+                                           adrfam="ipv4",
+                                           traddr="127.0.0.1",
+                                           trsvcid=5101)
     listener_ret = stubA.create_listener(listenerA_req)
     assert listener_ret.status == 0
-    assert (
-        f"Received request to create {gwA.host_name} TCP ipv4 listener for {subsystem} at 127.0.0.1:5101"
-        in caplog.text
-    )
+    assert f"Received request to create {gwA.host_name} TCP ipv4 listener for {subsystem} at 127.0.0.1:5101" in caplog.text
     assert f"create_listener: True" in caplog.text
     caplog.clear()
-    listenerB_req = pb2.create_listener_req(
-        nqn=subsystem,
-        host_name=gwB.host_name,
-        adrfam="ipv4",
-        traddr="127.0.0.1",
-        trsvcid=5102,
-    )
+    listenerB_req = pb2.create_listener_req(nqn=subsystem,
+                                           host_name=gwB.host_name,
+                                           adrfam="ipv4",
+                                           traddr="127.0.0.1",
+                                           trsvcid=5102)
     listener_ret = stubB.create_listener(listenerB_req)
     assert listener_ret.status == 0
-    assert (
-        f"Received request to create {gwB.host_name} TCP ipv4 listener for {subsystem} at 127.0.0.1:5102"
-        in caplog.text
-    )
+    assert f"Received request to create {gwB.host_name} TCP ipv4 listener for {subsystem} at 127.0.0.1:5102" in caplog.text
     assert f"create_listener: True" in caplog.text
     caplog.clear()
     subsystem_del_req = pb2.delete_subsystem_req(subsystem_nqn=subsystem)
@@ -512,18 +359,12 @@ def test_multi_gateway_listener_update(config, image, conn_concurrent, caplog):
     caplog.clear()
     listener_ret = stubA.create_listener(listenerA_req)
     assert listener_ret.status == 0
-    assert (
-        f"Received request to create {gwA.host_name} TCP ipv4 listener for {subsystem} at 127.0.0.1:5101"
-        in caplog.text
-    )
+    assert f"Received request to create {gwA.host_name} TCP ipv4 listener for {subsystem} at 127.0.0.1:5101" in caplog.text
     assert f"create_listener: True" in caplog.text
     assert f"Failure adding {subsystem} listener at 127.0.0.1:5101" not in caplog.text
     caplog.clear()
     listener_ret = stubB.create_listener(listenerB_req)
     assert listener_ret.status == 0
-    assert (
-        f"Received request to create {gwB.host_name} TCP ipv4 listener for {subsystem} at 127.0.0.1:5102"
-        in caplog.text
-    )
+    assert f"Received request to create {gwB.host_name} TCP ipv4 listener for {subsystem} at 127.0.0.1:5102" in caplog.text
     assert f"create_listener: True" in caplog.text
     assert f"Failure adding {subsystem} listener at 127.0.0.1:5102" not in caplog.text

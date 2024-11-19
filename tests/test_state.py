@@ -75,9 +75,8 @@ def test_state_polling_update(config, ioctx, local_state, omap_state):
 
     version = 1
     update_interval_sec = 1
-    state = GatewayStateHandler(
-        config, local_state, omap_state, _state_polling_update, "test"
-    )
+    state = GatewayStateHandler(config, local_state, omap_state,
+                                _state_polling_update, "test")
     state.update_interval = update_interval_sec
     state.use_notify = False
     key = "namespace_test"
@@ -85,26 +84,20 @@ def test_state_polling_update(config, ioctx, local_state, omap_state):
 
     # Add namespace key to OMAP and update version number
     version += 1
-    add_key(
-        ioctx, key, "add", version, omap_state.omap_name, omap_state.OMAP_VERSION_KEY
-    )
+    add_key(ioctx, key, "add", version, omap_state.omap_name,
+            omap_state.OMAP_VERSION_KEY)
     time.sleep(update_interval_sec + 1)  # Allow time for polling
 
     # Change namespace key and update version number
     version += 1
-    add_key(
-        ioctx,
-        key,
-        "changed",
-        version,
-        omap_state.omap_name,
-        omap_state.OMAP_VERSION_KEY,
-    )
+    add_key(ioctx, key, "changed", version, omap_state.omap_name,
+            omap_state.OMAP_VERSION_KEY)
     time.sleep(update_interval_sec + 1)  # Allow time for polling
 
     # Remove namespace key and update version number
     version += 1
-    remove_key(ioctx, key, version, omap_state.omap_name, omap_state.OMAP_VERSION_KEY)
+    remove_key(ioctx, key, version, omap_state.omap_name,
+               omap_state.OMAP_VERSION_KEY)
     time.sleep(update_interval_sec + 1)  # Allow time for polling
 
     assert update_counter == 4
@@ -114,7 +107,7 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
     """Confirms use of OMAP watch/notify for updates."""
 
     update_counter = 0
-    notify_event = threading.Event()  # Event to signal when notify is called
+    notify_event = threading.Event() # Event to signal when notify is called
 
     def _state_notify_update(update, is_add_req):
         nonlocal update_counter
@@ -146,9 +139,8 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
 
     version = 1
     update_interval_sec = 10
-    state = GatewayStateHandler(
-        config, local_state, omap_state, _state_notify_update, "test"
-    )
+    state = GatewayStateHandler(config, local_state, omap_state,
+                                _state_notify_update, "test")
     key = "namespace_test"
     state.update_interval = update_interval_sec
     state.use_notify = True
@@ -157,10 +149,9 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
 
     # Add namespace key to OMAP and update version number
     version += 1
-    add_key(
-        ioctx, key, "add", version, omap_state.omap_name, omap_state.OMAP_VERSION_KEY
-    )
-    assert ioctx.notify(omap_state.omap_name)  # Send notify signal
+    add_key(ioctx, key, "add", version, omap_state.omap_name,
+            omap_state.OMAP_VERSION_KEY)
+    assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
     # Wait for the notify to be triggered
     assert notify_event.wait(update_interval_sec - 0.5)
     notify_event.clear()  # Reset the event for the next notification
@@ -168,15 +159,9 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
 
     # Change namespace key and update version number
     version += 1
-    add_key(
-        ioctx,
-        key,
-        "changed",
-        version,
-        omap_state.omap_name,
-        omap_state.OMAP_VERSION_KEY,
-    )
-    assert ioctx.notify(omap_state.omap_name)  # Send notify signal
+    add_key(ioctx, key, "changed", version, omap_state.omap_name,
+            omap_state.OMAP_VERSION_KEY)
+    assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
     # Wait for the notify to be triggered
     assert notify_event.wait(update_interval_sec - 0.5)
     notify_event.clear()  # Reset the event for the next notification
@@ -184,8 +169,9 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
 
     # Remove namespace key and update version number
     version += 1
-    remove_key(ioctx, key, version, omap_state.omap_name, omap_state.OMAP_VERSION_KEY)
-    assert ioctx.notify(omap_state.omap_name)  # Send notify signal
+    remove_key(ioctx, key, version, omap_state.omap_name,
+               omap_state.OMAP_VERSION_KEY)
+    assert (ioctx.notify(omap_state.omap_name))  # Send notify signal
     # Wait for the notify to be triggered
     assert notify_event.wait(update_interval_sec - 0.5)
     notify_event.clear()  # Reset the event for the next notification
@@ -195,8 +181,8 @@ def test_state_notify_update(config, ioctx, local_state, omap_state):
     # to test notify capability
     elapsed = time.time() - start
     wait_interval = update_interval_sec - elapsed - 0.5
-    assert wait_interval > 0
-    assert wait_interval < update_interval_sec
+    assert(wait_interval > 0)
+    assert(wait_interval < update_interval_sec)
     time.sleep(wait_interval)
 
     # expect 4 updates: addition, two-step change and removal

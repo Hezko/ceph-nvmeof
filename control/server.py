@@ -27,13 +27,7 @@ import spdk.rpc.nvmf as rpc_nvmf
 from .proto import gateway_pb2 as pb2
 from .proto import gateway_pb2_grpc as pb2_grpc
 from .proto import monitor_pb2_grpc
-from .state import (
-    GatewayState,
-    LocalGatewayState,
-    OmapLock,
-    OmapGatewayState,
-    GatewayStateHandler,
-)
+from .state import GatewayState, LocalGatewayState, OmapLock, OmapGatewayState, GatewayStateHandler
 from .grpc import GatewayService, MonitorGroupService
 from .discovery import DiscoveryService
 from .config import GatewayConfig
@@ -42,13 +36,11 @@ from .utils import GatewayUtils
 from .cephutils import CephUtils
 from .prometheus import start_exporter
 
-
 def sigterm_handler(signum, frame):
     """Handle SIGTERM, runs when a gateway is terminated gracefully."""
     logger = GatewayLogger().logger
     logger.info(f"GatewayServer: SIGTERM received {signum=}")
     raise SystemExit(0)
-
 
 def sigchld_handler(signum, frame):
     """Handle SIGCHLD, runs when a child process, like the spdk, terminates."""
@@ -68,11 +60,9 @@ def sigchld_handler(signum, frame):
     # GW process should exit now
     raise SystemExit(f"Gateway subprocess terminated {pid=} {exit_code=}")
 
-
 def int_to_bitmask(n):
     """Converts an integer n to a bitmask string"""
     return f"0x{hex((1 << n) - 1)[2:].upper()}"
-
 
 def cpumask_set(args):
     """Check if reactor cpu mask is set in command line args"""
@@ -83,11 +73,10 @@ def cpumask_set(args):
 
     # Check for the presence of "--cpumask="
     for arg in args:
-        if arg.startswith("--cpumask="):
+        if arg.startswith('--cpumask='):
             return True
 
     return False
-
 
 class GatewayServer:
     """Runs SPDK and receives client requests for the gateway service.
@@ -120,7 +109,7 @@ class GatewayServer:
         self.ceph_utils = None
         self.rpc_lock = threading.Lock()
         self.group_id = 0
-        self.monitor_client = "/usr/bin/ceph-nvmeof-monitor-client"
+        self.monitor_client = '/usr/bin/ceph-nvmeof-monitor-client'
         self.monitor_client_log_file = None
         self.monitor_client_log_file_path = None
         self.omap_state = None
@@ -159,9 +148,7 @@ class GatewayServer:
             self.spdk_log_file = None
 
         if self.spdk_log_file_path:
-            GatewayLogger.compress_file(
-                self.spdk_log_file_path, f"{self.spdk_log_file_path}.gz"
-            )
+            GatewayLogger.compress_file(self.spdk_log_file_path, f"{self.spdk_log_file_path}.gz")
             self.spdk_log_file_path = None
 
         if self.monitor_client_log_file:
@@ -172,10 +159,7 @@ class GatewayServer:
             self.monitor_client_log_file = None
 
         if self.monitor_client_log_file_path:
-            GatewayLogger.compress_file(
-                self.monitor_client_log_file_path,
-                f"{self.monitor_client_log_file_path}.gz",
-            )
+            GatewayLogger.compress_file(self.monitor_client_log_file_path, f"{self.monitor_client_log_file_path}.gz")
             self.monitor_client_log_file_path = None
 
         if self.server:
@@ -204,19 +188,13 @@ class GatewayServer:
     def _wait_for_group_id(self):
         """Waits for the monitor notification of this gatway's group id"""
         self.monitor_server = self._grpc_server(self._monitor_address())
-        monitor_pb2_grpc.add_MonitorGroupServicer_to_server(
-            MonitorGroupService(self.set_group_id), self.monitor_server
-        )
+        monitor_pb2_grpc.add_MonitorGroupServicer_to_server(MonitorGroupService(self.set_group_id), self.monitor_server)
         self.monitor_server.start()
-        self.logger.info(
-            f"MonitorGroup server is listening on {self._monitor_address()} for group id"
-        )
+        self.logger.info(f"MonitorGroup server is listening on {self._monitor_address()} for group id")
         self.monitor_event.wait()
         self.monitor_event = None
         self.logger.info("Stopping the MonitorGroup server...")
-        grace = self.config.getfloat_with_default(
-            "gateway", "monitor_stop_grace", 1 / 1000
-        )
+        grace = self.config.getfloat_with_default("gateway", "monitor_stop_grace", 1/1000)
         self.monitor_server.stop(grace).wait()
         self.logger.info("The MonitorGroup gRPC server stopped...")
         self.monitor_server = None
@@ -224,23 +202,15 @@ class GatewayServer:
     def start_prometheus(self):
         ###Starts the prometheus endpoint if enabled by the config.###
 
-        if self.config.getboolean_with_default(
-            "gateway", "enable_prometheus_exporter", True
-        ):
+        if self.config.getboolean_with_default("gateway", "enable_prometheus_exporter", True):
             self.logger.info("Prometheus endpoint is enabled")
-            start_exporter(
-                self.spdk_rpc_client, self.config, self.gateway_rpc, self.logger
-            )
+            start_exporter(self.spdk_rpc_client, self.config, self.gateway_rpc, self.logger)
         else:
-            self.logger.info(
-                f"Prometheus endpoint is disabled. To enable, set the config option 'enable_prometheus_exporter = True'"
-            )
+            self.logger.info(f"Prometheus endpoint is disabled. To enable, set the config option 'enable_prometheus_exporter = True'")
 
     def serve(self):
         """Starts gateway server."""
-        self.logger.info(
-            f"Starting serve, monitor client version: {self._monitor_client_version()}"
-        )
+        self.logger.info(f"Starting serve, monitor client version: {self._monitor_client_version()}")
 
         omap_state = OmapGatewayState(self.config, f"gateway-{self.name}")
         self.omap_state = omap_state
@@ -265,24 +235,9 @@ class GatewayServer:
         self._start_discovery_service()
 
         # Register service implementation with server
-        gateway_state = GatewayStateHandler(
-            self.config,
-            local_state,
-            omap_state,
-            self.gateway_rpc_caller,
-            f"gateway-{self.name}",
-        )
+        gateway_state = GatewayStateHandler(self.config, local_state, omap_state, self.gateway_rpc_caller, f"gateway-{self.name}")
         self.omap_lock = OmapLock(omap_state, gateway_state, self.rpc_lock)
-        self.gateway_rpc = GatewayService(
-            self.config,
-            gateway_state,
-            self.rpc_lock,
-            self.omap_lock,
-            self.group_id,
-            self.spdk_rpc_client,
-            self.spdk_rpc_subsystems_client,
-            self.ceph_utils,
-        )
+        self.gateway_rpc = GatewayService(self.config, gateway_state, self.rpc_lock, self.omap_lock, self.group_id, self.spdk_rpc_client, self.spdk_rpc_subsystems_client, self.ceph_utils)
         self.server = self._grpc_server(self._gateway_address())
         pb2_grpc.add_GatewayServicer_to_server(self.gateway_rpc, self.server)
 
@@ -297,11 +252,9 @@ class GatewayServer:
         log_level = self.config.get_with_default("spdk", "log_level", None)
         if log_level and log_level.strip():
             log_level = log_level.strip().upper()
-            log_req = pb2.set_spdk_nvmf_logs_req(
-                log_level=log_level, print_level=log_level
-            )
+            log_req = pb2.set_spdk_nvmf_logs_req(log_level=log_level, print_level=log_level)
             self.gateway_rpc.set_spdk_nvmf_logs(log_req)
-
+        
         self._register_service_map()
 
         # This should be at the end of the function, after the server is up
@@ -313,10 +266,10 @@ class GatewayServer:
         metadata = {
             "id": self.name.removeprefix("client.nvmeof."),
             "pool_name": self.config.get("ceph", "pool"),
-            "daemon_type": "gateway",  # "nvmeof: 3 <daemon_type> active (3 hosts)"
+            "daemon_type": "gateway", # "nvmeof: 3 <daemon_type> active (3 hosts)"
             "group": self.config.get_with_default("gateway", "group", ""),
-        }
-        self.ceph_utils.service_daemon_register(conn, metadata)
+        } 
+        self.ceph_utils.service_daemon_register(conn, metadata) 
 
     def _monitor_client_version(self) -> str:
         """Return monitor client version string."""
@@ -326,9 +279,7 @@ class GatewayServer:
         try:
             # Execute the command and capture its output
             signal.signal(signal.SIGCHLD, signal.SIG_IGN)
-            completed_process = subprocess.run(
-                [self.monitor_client, "--version"], capture_output=True, text=True
-            )
+            completed_process = subprocess.run([self.monitor_client, "--version"], capture_output=True, text=True)
         finally:
             # Restore the original SIGCHLD handler
             signal.signal(signal.SIGCHLD, original_sigchld_handler)
@@ -339,9 +290,7 @@ class GatewayServer:
 
     def _start_monitor_client(self):
         """Runs CEPH NVMEOF Monitor Client."""
-        enable_monitor_client = self.config.getboolean_with_default(
-            "gateway", "enable_monitor_client", True
-        )
+        enable_monitor_client = self.config.getboolean_with_default("gateway", "enable_monitor_client", True)
         if not enable_monitor_client:
             self.logger.info("CEPH monitor client is disabled")
             return
@@ -349,47 +298,29 @@ class GatewayServer:
         rados_id = self.config.get_with_default("ceph", "id", "client.admin")
         if not rados_id.startswith(client_prefix):
             rados_id = client_prefix + rados_id
-        cmd = [
-            self.monitor_client,
-            "--gateway-name",
-            self.name,
-            "--gateway-address",
-            self._gateway_address(),
-            "--gateway-pool",
-            self.config.get("ceph", "pool"),
-            "--gateway-group",
-            self.config.get_with_default("gateway", "group", ""),
-            "--monitor-group-address",
-            self._monitor_address(),
-            "-c",
-            "/etc/ceph/ceph.conf",
-            "-n",
-            rados_id,
-            "-k",
-            "/etc/ceph/keyring",
-        ]
+        cmd = [ self.monitor_client,
+                "--gateway-name", self.name,
+                "--gateway-address", self._gateway_address(),
+                "--gateway-pool", self.config.get("ceph", "pool"),
+                "--gateway-group", self.config.get_with_default("gateway", "group", ""),
+                "--monitor-group-address", self._monitor_address(),
+                '-c', '/etc/ceph/ceph.conf',
+                '-n', rados_id,
+                '-k', '/etc/ceph/keyring']
         if self.config.getboolean("gateway", "enable_auth"):
             cmd += [
-                "--server-cert",
-                self.config.get("mtls", "server_cert"),
-                "--client-key",
-                self.config.get("mtls", "client_key"),
-                "--client-cert",
-                self.config.get("mtls", "client_cert"),
-            ]
+                "--server-cert", self.config.get("mtls", "server_cert"),
+                "--client-key", self.config.get("mtls", "client_key"),
+                "--client-cert", self.config.get("mtls", "client_cert") ]
 
         self.monitor_client_log_file = None
         self.monitor_client_log_file_path = None
         log_stderr = None
         log_file_dir = self.config.get_with_default("monitor", "log_file_dir", None)
-        self.monitor_client_log_file_path = self.handle_process_output_file(
-            log_file_dir, "monitor-client"
-        )
+        self.monitor_client_log_file_path = self.handle_process_output_file(log_file_dir, "monitor-client")
         if self.monitor_client_log_file_path:
             try:
-                self.monitor_client_log_file = open(
-                    self.monitor_client_log_file_path, "wt"
-                )
+                self.monitor_client_log_file = open(self.monitor_client_log_file_path, "wt")
                 log_stderr = subprocess.STDOUT
             except Exception:
                 pass
@@ -397,16 +328,10 @@ class GatewayServer:
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:
             # start monitor client process
-            self.monitor_client_process = subprocess.Popen(
-                cmd, stdout=self.monitor_client_log_file, stderr=log_stderr
-            )
-            self.logger.info(
-                f"monitor client process id: {self.monitor_client_process.pid}"
-            )
+            self.monitor_client_process = subprocess.Popen(cmd, stdout=self.monitor_client_log_file, stderr=log_stderr)
+            self.logger.info(f"monitor client process id: {self.monitor_client_process.pid}")
             if self.monitor_client_log_file and self.monitor_client_log_file_path:
-                self.logger.info(
-                    f"Monitor log file is {self.monitor_client_log_file_path}"
-                )
+                self.logger.info(f"Monitor log file is {self.monitor_client_log_file_path}")
             # wait for monitor notification of the group id
             self._wait_for_group_id()
         except Exception:
@@ -415,17 +340,13 @@ class GatewayServer:
 
     def _start_discovery_service(self):
         """Runs either SPDK on CEPH NVMEOF Discovery Service."""
-        enable_spdk_discovery_controller = self.config.getboolean_with_default(
-            "gateway", "enable_spdk_discovery_controller", False
-        )
+        enable_spdk_discovery_controller = self.config.getboolean_with_default("gateway", "enable_spdk_discovery_controller", False)
         if enable_spdk_discovery_controller:
             self.logger.info("Using SPDK discovery service")
             return
 
         try:
-            rpc_nvmf.nvmf_delete_subsystem(
-                self.spdk_rpc_client, GatewayUtils.DISCOVERY_NQN
-            )
+            rpc_nvmf.nvmf_delete_subsystem(self.spdk_rpc_client, GatewayUtils.DISCOVERY_NQN)
         except Exception:
             self.logger.exception(f"Delete Discovery subsystem returned with error")
             raise
@@ -491,7 +412,8 @@ class GatewayServer:
             )
 
             # Add secure port using credentials
-            server.add_secure_port(address, server_credentials)
+            server.add_secure_port(
+                address, server_credentials)
         else:
             # Authentication is not enabled
             server.add_insecure_port(address)
@@ -511,7 +433,7 @@ class GatewayServer:
             log_file_dir += "/"
         log_file_path = f"{log_file_dir}{prefix}-{self.name}.log"
 
-        log_files = [f"{log_file_path}{suffix}" for suffix in [".bak", ".gz.bak"]]
+        log_files = [f"{log_file_path}{suffix}" for suffix in ['.bak', '.gz.bak']]
         for log_file in log_files:
             try:
                 os.remove(log_file)
@@ -547,15 +469,12 @@ class GatewayServer:
             sockdir += "/"
         sockname = self.config.get_with_default("spdk", "rpc_socket_name", "spdk.sock")
         if sockname.find("/") >= 0:
-            self.logger.error(
-                f'Invalid SPDK socket name "{sockname}". Name should not contain a "/".'
-            )
-            raise (f"Invalid SPDK socket name.")
+            self.logger.error(f"Invalid SPDK socket name \"{sockname}\". Name should not contain a \"/\".")
+            raise(f"Invalid SPDK socket name.")
         self.spdk_rpc_socket_path = sockdir + sockname
         self.logger.info(f"SPDK Socket: {self.spdk_rpc_socket_path}")
         spdk_tgt_cmd_extra_args = self.config.get_with_default(
-            "spdk", "tgt_cmd_extra_args", ""
-        )
+            "spdk", "tgt_cmd_extra_args", "")
         cmd = [spdk_tgt_path, "-u", "-r", self.spdk_rpc_socket_path]
 
         # Add extra args from the conf file
@@ -583,25 +502,17 @@ class GatewayServer:
         self.logger.info(f"Starting {' '.join(cmd)}")
         try:
             # start spdk process
-            time.sleep(
-                2
-            )  # this is a temporary hack, we have a timing issue here. Once we solve it the sleep will ve removed
-            self.spdk_process = subprocess.Popen(
-                cmd, stdout=self.spdk_log_file, stderr=log_stderr
-            )
+            time.sleep(2)      # this is a temporary hack, we have a timing issue here. Once we solve it the sleep will ve removed
+            self.spdk_process = subprocess.Popen(cmd, stdout=self.spdk_log_file, stderr=log_stderr)
         except Exception:
             self.logger.exception(f"Unable to start SPDK")
             raise
 
         # Initialization
         timeout = self.config.getfloat_with_default("spdk", "timeout", 60.0)
-        protocol_log_level = self.config.get_with_default(
-            "spdk", "protocol_log_level", None
-        )
+        protocol_log_level = self.config.get_with_default("spdk", "protocol_log_level", None)
         if not protocol_log_level or not protocol_log_level.strip():
-            protocol_log_level = self.config.get_with_default(
-                "spdk", "log_level", "WARNING"
-            )
+            protocol_log_level = self.config.get_with_default("spdk", "log_level", "WARNING")
         if not protocol_log_level or not protocol_log_level.strip():
             protocol_log_level = "WARNING"
         else:
@@ -642,7 +553,8 @@ class GatewayServer:
             raise
 
         # Implicitly create transports
-        spdk_transports = self.config.get_with_default("spdk", "transports", "tcp")
+        spdk_transports = self.config.get_with_default("spdk", "transports",
+                                                       "tcp")
         for trtype in spdk_transports.split():
             self._create_transport(trtype.lower())
 
@@ -650,7 +562,7 @@ class GatewayServer:
             return_version = spdk.rpc.spdk_get_version(self.spdk_rpc_client)
             try:
                 version_string = return_version["version"]
-                self.logger.info(f'Started SPDK with version "{version_string}"')
+                self.logger.info(f"Started SPDK with version \"{version_string}\"")
             except KeyError:
                 self.logger.error(f"Can't find SPDK version string in {return_version}")
         except Exception:
@@ -659,30 +571,24 @@ class GatewayServer:
 
     def _stop_subprocess(self, proc, timeout):
         """Stops SPDK process."""
-        assert proc is not None  # should be verified by the caller
+        assert proc is not None # should be verified by the caller
 
         return_code = proc.returncode
 
         # Terminate spdk process
         if return_code is not None:
-            self.logger.error(
-                f"{self.name} pid {proc.pid} "
-                f"already terminated, exit code: {return_code}"
-            )
+            self.logger.error(f"{self.name} pid {proc.pid} "
+                              f"already terminated, exit code: {return_code}")
         else:
-            self.logger.info(
-                f"Terminating sub process of ({self.name}) pid {proc.pid} args {proc.args} ..."
-            )
+            self.logger.info(f"Terminating sub process of ({self.name}) pid {proc.pid} args {proc.args} ...")
             proc.terminate()
 
         try:
             proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            self.logger.exception(
-                f"({self.name}) pid {proc.pid} "
-                f"timeout occurred while terminating sub process:"
-            )
-            proc.kill()  # kill -9, send KILL signal
+            self.logger.exception(f"({self.name}) pid {proc.pid} "
+                                  f"timeout occurred while terminating sub process:")
+            proc.kill() # kill -9, send KILL signal
 
     def _stop_monitor_client(self):
         """Stops Monitor client."""
@@ -696,10 +602,7 @@ class GatewayServer:
                 pass
             self.monitor_client_log_file = None
         if self.monitor_client_log_file_path:
-            GatewayLogger.compress_file(
-                self.monitor_client_log_file_path,
-                f"{self.monitor_client_log_file_path}.gz",
-            )
+            GatewayLogger.compress_file(self.monitor_client_log_file_path, f"{self.monitor_client_log_file_path}.gz")
             self.monitor_client_log_file_path = None
 
     def _stop_spdk(self):
@@ -715,9 +618,7 @@ class GatewayServer:
                 pass
             self.spdk_log_file = None
         if self.spdk_log_file_path:
-            GatewayLogger.compress_file(
-                self.spdk_log_file_path, f"{self.spdk_log_file_path}.gz"
-            )
+            GatewayLogger.compress_file(self.spdk_log_file_path, f"{self.spdk_log_file_path}.gz")
             self.spdk_log_file_path = None
 
         # Clean spdk rpc socket
@@ -725,13 +626,11 @@ class GatewayServer:
             try:
                 os.remove(self.spdk_rpc_socket_path)
             except Exception:
-                self.logger.exception(
-                    f"An error occurred while removing RPC socket {self.spdk_rpc_socket_path}"
-                )
+                self.logger.exception(f"An error occurred while removing RPC socket {self.spdk_rpc_socket_path}")
 
     def _stop_discovery(self):
         """Stops Discovery service process."""
-        assert self.discovery_pid is not None  # should be verified by the caller
+        assert self.discovery_pid is not None # should be verified by the caller
 
         self.logger.info("Terminating discovery service...")
         # discovery service selector loop should exit due to KeyboardInterrupt exception
@@ -739,14 +638,14 @@ class GatewayServer:
             os.kill(self.discovery_pid, signal.SIGINT)
             os.waitpid(self.discovery_pid, 0)
         except (ChildProcessError, ProcessLookupError):
-            pass  # ignore
+            pass # ignore
         self.logger.info("Discovery service terminated")
 
         self.discovery_pid = None
 
     def _create_transport(self, trtype):
         """Initializes a transport type."""
-        args = {"trtype": trtype}
+        args = {'trtype': trtype}
         name = "transport_" + trtype + "_options"
         options = self.config.get_with_default("spdk", name, "")
 
@@ -760,23 +659,19 @@ class GatewayServer:
                 raise
 
         try:
-            status = rpc_nvmf.nvmf_create_transport(self.spdk_rpc_client, **args)
+            status = rpc_nvmf.nvmf_create_transport(
+                self.spdk_rpc_client, **args)
         except Exception:
             self.logger.exception(f"Create Transport {trtype} returned with error")
             raise
 
     def keep_alive(self):
         """Continuously confirms communication with SPDK process."""
-        allowed_consecutive_spdk_ping_failures = self.config.getint_with_default(
-            "gateway", "allowed_consecutive_spdk_ping_failures", 1
-        )
-        spdk_ping_interval_in_seconds = self.config.getfloat_with_default(
-            "gateway", "spdk_ping_interval_in_seconds", 2.0
-        )
+        allowed_consecutive_spdk_ping_failures = self.config.getint_with_default("gateway",
+                                                                                      "allowed_consecutive_spdk_ping_failures", 1)
+        spdk_ping_interval_in_seconds = self.config.getfloat_with_default("gateway", "spdk_ping_interval_in_seconds", 2.0)
         if spdk_ping_interval_in_seconds < 0.0:
-            self.logger.warning(
-                f"Invalid SPDK ping interval {spdk_ping_interval_in_seconds}, will reset to 0"
-            )
+            self.logger.warning(f"Invalid SPDK ping interval {spdk_ping_interval_in_seconds}, will reset to 0")
             spdk_ping_interval_in_seconds = 0.0
 
         consecutive_ping_failures = 0
@@ -796,14 +691,10 @@ class GatewayServer:
             if not alive:
                 consecutive_ping_failures += 1
                 if consecutive_ping_failures >= allowed_consecutive_spdk_ping_failures:
-                    self.logger.critical(
-                        f"SPDK ping failed {consecutive_ping_failures} times, aborting"
-                    )
+                    self.logger.critical(f"SPDK ping failed {consecutive_ping_failures} times, aborting")
                     raise SystemExit(f"SPDK ping failed, quitting gateway")
                 else:
-                    self.logger.warning(
-                        f"SPDK ping failed {consecutive_ping_failures} times, will keep trying"
-                    )
+                    self.logger.warning(f"SPDK ping failed {consecutive_ping_failures} times, will keep trying")
             else:
                 consecutive_ping_failures = 0
 
@@ -821,85 +712,59 @@ class GatewayServer:
         for key, val in requests.items():
             if key.startswith(GatewayState.SUBSYSTEM_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(
-                        val, pb2.create_subsystem_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val, pb2.create_subsystem_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.create_subsystem(req)
                 else:
-                    req = json_format.Parse(
-                        val, pb2.delete_subsystem_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val,
+                                            pb2.delete_subsystem_req(),
+                                            ignore_unknown_fields=True)
                     self.gateway_rpc.delete_subsystem(req)
             elif key.startswith(GatewayState.NAMESPACE_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(
-                        val, pb2.namespace_add_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val, pb2.namespace_add_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_add(req)
                 else:
-                    req = json_format.Parse(
-                        val, pb2.namespace_delete_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val,
+                                            pb2.namespace_delete_req(),
+                                            ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_delete(req)
             elif key.startswith(GatewayState.NAMESPACE_QOS_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(
-                        val, pb2.namespace_set_qos_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val, pb2.namespace_set_qos_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_set_qos_limits(req)
                 else:
                     # Do nothing, this is covered by the delete namespace code
                     pass
             elif key.startswith(GatewayState.HOST_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(
-                        val, pb2.add_host_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val, pb2.add_host_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.add_host(req)
                 else:
-                    req = json_format.Parse(
-                        val, pb2.remove_host_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val, pb2.remove_host_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.remove_host(req)
             elif key.startswith(GatewayState.LISTENER_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(
-                        val, pb2.create_listener_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val, pb2.create_listener_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.create_listener(req)
                 else:
-                    req = json_format.Parse(
-                        val, pb2.delete_listener_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val, pb2.delete_listener_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.delete_listener(req)
             elif key.startswith(GatewayState.NAMESPACE_LB_GROUP_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(
-                        val,
-                        pb2.namespace_change_load_balancing_group_req(),
-                        ignore_unknown_fields=True,
-                    )
+                    req = json_format.Parse(val, pb2.namespace_change_load_balancing_group_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_change_load_balancing_group(req)
             elif key.startswith(GatewayState.NAMESPACE_HOST_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(
-                        val, pb2.namespace_add_host_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val, pb2.namespace_add_host_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_add_host(req)
                 else:
-                    req = json_format.Parse(
-                        val, pb2.namespace_delete_host_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val, pb2.namespace_delete_host_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.namespace_delete_host(req)
             elif key.startswith(GatewayState.HOST_KEY_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(
-                        val, pb2.change_host_key_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val, pb2.change_host_key_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.change_host_key(req)
             elif key.startswith(GatewayState.SUBSYSTEM_KEY_PREFIX):
                 if is_add_req:
-                    req = json_format.Parse(
-                        val, pb2.change_subsystem_key_req(), ignore_unknown_fields=True
-                    )
+                    req = json_format.Parse(val, pb2.change_subsystem_key_req(), ignore_unknown_fields=True)
                     self.gateway_rpc.change_subsystem_key(req)
